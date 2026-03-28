@@ -1,0 +1,63 @@
+# ─── macOS ───────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# ─── Secrets & credentials ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+.env.bak
+secrets/
+*.p8
+*.p12
+*.pem
+*.key
+*.keystore
+*.mobileprovision
+GoogleService-Info.plist
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+
+# ─── Redis / local data dumps ────────────────────────────────────────────────
+*.rdb
+dump.rdb
+
+# ─── Swift / Xcode ───────────────────────────────────────────────────────────
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+Package.resolved.bak
+*.xccheckout
+
+# ─── IDE / editor ────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*~
