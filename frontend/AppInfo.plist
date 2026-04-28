@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<!-- На время разработки разрешаем произвольные HTTP-загрузки —
+		     иначе на реальном устройстве iOS блокирует http://192.168.x.x:8000.
+		     В продакшене нужно убрать и перейти на HTTPS. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Siberia подключается к серверу в локальной сети для обмена сообщениями и медиа.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Siberia использует галерею для отправки фотографий в чатах.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Siberia использует камеру для видео-звонков, съёмки и отправки фото в чатах.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Siberia использует микрофон для звонков и записи голосовых сообщений.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+		<string>remote-notification</string>
+	</array>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Siberia сохраняет полученные фотографии в галерею.</string>
+</dict>
+</plist>
