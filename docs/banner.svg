@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 240" width="1200" height="240" fill="none" role="img" aria-label="Siberia — Telegram-class messenger with 1:1 WebRTC calls">
+  <defs>
+    <linearGradient id="aurora" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed"><animate attributeName="stop-color" values="#7c3aed;#22d3ee;#a855f7;#7c3aed" dur="12s" repeatCount="indefinite"/></stop>
+      <stop offset="0.5" stop-color="#a855f7"><animate attributeName="stop-color" values="#a855f7;#7c3aed;#22d3ee;#a855f7" dur="12s" repeatCount="indefinite"/></stop>
+      <stop offset="1" stop-color="#22d3ee"><animate attributeName="stop-color" values="#22d3ee;#a855f7;#7c3aed;#22d3ee" dur="12s" repeatCount="indefinite"/></stop>
+    </linearGradient>
+    <radialGradient id="bA" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#7c3aed" stop-opacity="0.5"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></radialGradient>
+    <radialGradient id="bB" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#22d3ee" stop-opacity="0.42"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+    <linearGradient id="vig" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b0b14"/><stop offset="1" stop-color="#050509"/></linearGradient>
+    <filter id="sf" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="24"/></filter>
+    <style>
+      .name{font-family:'Playfair Display','Georgia','Times New Roman',serif;}
+      .mono{font-family:ui-monospace,'SF Mono','JetBrains Mono','Menlo',monospace;}
+      @keyframes tw{0%,100%{opacity:.15;}50%{opacity:.85;}}
+      .tw{animation:tw 3.6s ease-in-out infinite;}
+    </style>
+  </defs>
+
+  <rect width="1200" height="240" rx="16" fill="url(#vig)"/>
+  <rect x="1" y="1" width="1198" height="238" rx="15" fill="none" stroke="#1c2233"/>
+  <g filter="url(#sf)">
+    <ellipse cx="230" cy="90" rx="210" ry="130" fill="url(#bA)"><animateTransform attributeName="transform" type="translate" values="0 0; 50 24; -18 -8; 0 0" dur="19s" repeatCount="indefinite"/></ellipse>
+    <ellipse cx="920" cy="170" rx="240" ry="150" fill="url(#bB)"><animateTransform attributeName="transform" type="translate" values="0 0; -44 -20; 26 12; 0 0" dur="23s" repeatCount="indefinite"/></ellipse>
+  </g>
+  <g fill="#dfe7ff">
+    <circle class="tw" cx="150" cy="54" r="1.2" style="animation-delay:.2s"/>
+    <circle class="tw" cx="470" cy="196" r="1.1" style="animation-delay:1.2s"/>
+    <circle class="tw" cx="705" cy="60" r="1.2" style="animation-delay:.7s"/>
+    <circle class="tw" cx="1030" cy="200" r="1.1" style="animation-delay:1.9s"/>
+    <circle class="tw" cx="86" cy="150" r="1.0" style="animation-delay:2.4s"/>
+  </g>
+
+  <!-- brand orbit motif (right) -->
+  <g transform="translate(1058 120)" opacity="0.9">
+    <g fill="none" stroke="url(#aurora)" stroke-width="1.5">
+      <circle r="78" opacity="0.35"/>
+      <ellipse rx="78" ry="30" opacity="0.85"><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="17s" repeatCount="indefinite"/></ellipse>
+      <ellipse rx="78" ry="30" opacity="0.7"><animateTransform attributeName="transform" type="rotate" from="90" to="450" dur="23s" repeatCount="indefinite"/></ellipse>
+    </g>
+    <circle r="5" fill="#22d3ee"/>
+    <g><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="17s" repeatCount="indefinite"/><circle r="3" fill="#d4af37" cx="78" cy="0"/></g>
+  </g>
+
+  <g stroke="#d4af37" stroke-width="1.4" opacity="0.8">
+    <path d="M26 40 L26 24 L42 24"/><path d="M1174 40 L1174 24 L1158 24"/>
+    <path d="M26 200 L26 216 L42 216"/><path d="M1174 200 L1174 216 L1158 216"/>
+  </g>
+
+  <g transform="translate(66 118)">
+    <text class="name" x="0" y="0" font-size="52" font-weight="700" letter-spacing="0.5" fill="#f5f3ff">Siberia</text>
+    <line x1="3" y1="20" x2="360" y2="20" stroke="#d4af37" stroke-width="1.4" opacity="0.85"/>
+    <text class="mono" x="3" y="48" font-size="15.5" letter-spacing="1.5" fill="#9fb3d1">Telegram-class messenger with 1:1 WebRTC calls</text>
+    <g transform="translate(3 92)">
+      <rect x="0" y="-17" width="82" height="26" rx="13" fill="#0e1424" stroke="url(#aurora)" stroke-opacity="0.7" stroke-width="1"/>
+      <text class="mono" x="41" y="1" font-size="12.5" letter-spacing="0.5" text-anchor="middle" fill="#c7d4ea">SwiftUI</text>
+    </g>
+    <g transform="translate(97 92)">
+      <rect x="0" y="-17" width="74" height="26" rx="13" fill="#0e1424" stroke="url(#aurora)" stroke-opacity="0.7" stroke-width="1"/>
+      <text class="mono" x="37" y="1" font-size="12.5" letter-spacing="0.5" text-anchor="middle" fill="#c7d4ea">WebRTC</text>
+    </g>
+    <g transform="translate(183 92)">
+      <rect x="0" y="-17" width="82" height="26" rx="13" fill="#0e1424" stroke="url(#aurora)" stroke-opacity="0.7" stroke-width="1"/>
+      <text class="mono" x="41" y="1" font-size="12.5" letter-spacing="0.5" text-anchor="middle" fill="#c7d4ea">FastAPI</text>
+    </g>
+    <g transform="translate(277 92)">
+      <rect x="0" y="-17" width="65" height="26" rx="13" fill="#0e1424" stroke="url(#aurora)" stroke-opacity="0.7" stroke-width="1"/>
+      <text class="mono" x="32" y="1" font-size="12.5" letter-spacing="0.5" text-anchor="middle" fill="#c7d4ea">Redis</text>
+    </g>
+  </g>
+</svg>

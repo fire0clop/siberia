@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.svg" alt="siberia banner" width="100%">
+</p>
+
 # Siberia
 
 **A full-stack, Telegram-class messenger — native SwiftUI iOS client on top of an async FastAPI backend.**
