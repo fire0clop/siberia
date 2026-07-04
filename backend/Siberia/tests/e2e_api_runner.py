@@ -157,7 +157,7 @@ def main() -> int:
         json_body={
             "email": email_a,
             "nickname": "dup",
-            "password": "x",
+            "password": "secret123",
         },
         expected=400,
     )

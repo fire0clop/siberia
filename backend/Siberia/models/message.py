@@ -54,7 +54,7 @@ class Message(Base):
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     edited_at = Column(DateTime(timezone=True), nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     chat = relationship(
         "Chat",
