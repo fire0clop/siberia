@@ -8,20 +8,25 @@ iOS покрывает большую часть фич. Дальше — бло
 
 ---
 
-## [~] Блок 0 — Git-фундамент
+## [x] Блок 0 — Git-фундамент (закрыт 2026-07-04)
 
 - [x] Рабочая копия: клон `fire0clop/siberia`, вся работа и коммиты здесь
 - [x] Секреты (`.env`, `secrets/*.p8`) перенесены локально, в git не попадают
 - [x] CI перенесён из `backend/Siberia/.github/` в корень репо (иначе GitHub Actions его не видит)
 - [x] Деплой-джоба переведена на ручной запуск до настройки secrets
-- [ ] Первый пуш, зелёный CI
+- [x] Зелёный CI: ruff чист, e2e 48/48 (попутно: запинены зависимости —
+      fastapi 0.139 ломал fastapi-limiter; исправлен 500 на DELETE /messages —
+      tz-naive колонка deleted_at, миграция 017)
 
-## [ ] Блок 1 — Безопасность и надёжность бэкенда
+## [x] Блок 1 — Безопасность и надёжность бэкенда (закрыт 2026-07-04)
 
-- [ ] Сильный `SECRET_KEY` вместо `supersecretkey` (`secrets.token_urlsafe(32)`)
-- [ ] `services/push_apns.py`: чтение ключа APNs без обработки ошибок — недоступный файл роняет весь worker
-- [ ] `services/auth.py` / `verify_email_code()`: мёртвая ветка с потенциальным `AttributeError` (`ev.used` при `ev is None`)
-- [ ] WS-токен: в production принимать только через `Authorization` header (query string остаётся для dev)
+- [x] Сильный `SECRET_KEY` в локальном `.env` + startup-guard: production не стартует
+      со слабым/дефолтным ключом (по аналогии с CORS-guard)
+- [x] `services/push_apns.py`: ложная тревога — чтение ключа уже обёрнуто try/except
+      на обоих вызовах, worker не падает. Бонус: `send_voip()` уже реализован
+- [x] `verify_email_code()`: ложная тревога — обе error-ветки заканчиваются raise,
+      до `ev.used` с `ev=None` не дойти
+- [x] WS-токен через `?token=` отключён в production (только Authorization header)
 
 ## [ ] Блок 2 — Мелкие баги iOS
 

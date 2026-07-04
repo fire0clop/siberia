@@ -66,10 +66,14 @@ def _extract_token(websocket: WebSocket) -> str | None:
     """Достаём access-token либо из Authorization header (Bearer ...), либо из ?token=.
 
     Header — предпочтительный способ: не попадает в логи прокси / access-логи.
+    ?token= разрешён только вне production: там URL со всеми query-параметрами
+    оседает в access-логах балансировщика.
     """
     auth = websocket.headers.get("authorization") or websocket.headers.get("Authorization")
     if auth and auth.lower().startswith("bearer "):
         return auth.split(" ", 1)[1].strip() or None
+    if settings.ENV.lower() == "production":
+        return None
     qp = websocket.query_params.get("token")
     return qp or None
 

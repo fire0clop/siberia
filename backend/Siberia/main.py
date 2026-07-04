@@ -62,6 +62,17 @@ if settings.ENV.lower() == "production" and ("*" in _origins or not _origins):
         "Set explicit comma-separated list, e.g. CORS_ORIGINS='https://app.example.com'."
     )
 
+# Safety guard: дефолтный / короткий SECRET_KEY в production означает,
+# что любой может подделать JWT. Падаем при старте, а не молча.
+_WEAK_SECRETS = {"supersecretkey", "secret", "change-me-to-a-long-random-string", "ci-test-secret-key"}
+if settings.ENV.lower() == "production" and (
+    settings.SECRET_KEY in _WEAK_SECRETS or len(settings.SECRET_KEY) < 32
+):
+    raise RuntimeError(
+        "SECRET_KEY is too weak for ENV=production. "
+        "Generate one: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
