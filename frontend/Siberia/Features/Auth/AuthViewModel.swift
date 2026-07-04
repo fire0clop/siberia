@@ -39,8 +39,9 @@ final class AuthViewModel: ObservableObject {
 			return
 		}
 
-		// Email — простая проверка: должна быть @ и точка после
-		if !trimmedEmail.contains("@") || !trimmedEmail.split(separator: "@").last!.contains(".") {
+		// Email — простая проверка: должна быть @ и точка в доменной части
+		let domainPart = trimmedEmail.split(separator: "@", omittingEmptySubsequences: false).last
+		if !trimmedEmail.contains("@") || domainPart?.contains(".") != true {
 			error = "Введите корректный email"
 			return
 		}

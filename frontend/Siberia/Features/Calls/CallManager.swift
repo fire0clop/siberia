@@ -193,14 +193,14 @@ final class CallManager: NSObject {
 	// MARK: – SDP / ICE — приём через сигналинг
 
 	func handleRemoteSDP(kind: String, sdpString: String) async {
-		print("📞 REMOTE SDP received: kind=\(kind), bytes=\(sdpString.count)")
-		guard let pc else { print("📞 ERROR: pc is nil!"); return }
+		Log.calls.debug("REMOTE SDP received: kind=\(kind), bytes=\(sdpString.count)")
+		guard let pc else { Log.calls.error("remoteSDP: pc is nil"); return }
 		let type: RTCSdpType = (kind == "offer") ? .offer : .answer
 		let sdp = RTCSessionDescription(type: type, sdp: sdpString)
 		do {
 			try await Self.setRemote(pc: pc, sdp: sdp)
 			hasRemoteDescription = true
-			print("📞 setRemoteDescription OK, draining \(pendingRemoteIce.count) buffered ICE")
+			Log.calls.debug("setRemoteDescription OK, draining \(pendingRemoteIce.count) buffered ICE")
 			for cand in pendingRemoteIce { Self.addCandidate(pc: pc, candidate: cand) }
 			pendingRemoteIce.removeAll()
 
@@ -240,7 +240,7 @@ final class CallManager: NSObject {
 			let sdpMLineIndex = mLineRaw,
 			let sdp = payload["candidate"] as? String
 		else {
-			print("📞 REMOTE ICE: malformed payload \(payload)")
+			Log.calls.warning("REMOTE ICE: malformed payload \(payload)")
 			return
 		}
 		let kind: String
@@ -248,7 +248,7 @@ final class CallManager: NSObject {
 		else if sdp.contains(" typ srflx") { kind = "srflx" }
 		else if sdp.contains(" typ relay") { kind = "relay" }
 		else { kind = "other" }
-		print("📞 REMOTE ICE received: \(kind) (buffered=\(!hasRemoteDescription))")
+		Log.calls.debug("REMOTE ICE received: \(kind) (buffered=\(!hasRemoteDescription))")
 		let cand = RTCIceCandidate(sdp: sdp, sdpMLineIndex: sdpMLineIndex, sdpMid: sdpMid)
 		if hasRemoteDescription, let pc {
 			Self.addCandidate(pc: pc, candidate: cand)
@@ -488,7 +488,7 @@ extension CallManager: RTCPeerConnectionDelegate {
 		case .count: stateName = "count"
 		@unknown default: stateName = "unknown"
 		}
-		print("📞 ICE state: \(stateName)")
+		Log.calls.debug("ICE state: \(stateName)")
 		Task { @MainActor in
 			switch newState {
 			case .checking:
@@ -514,7 +514,7 @@ extension CallManager: RTCPeerConnectionDelegate {
 		else if candidate.sdp.contains(" typ srflx") { kind = "srflx" }
 		else if candidate.sdp.contains(" typ relay") { kind = "relay" }
 		else { kind = "other" }
-		print("📞 LOCAL ICE generated: \(kind) — \(candidate.sdp.prefix(80))…")
+		Log.calls.debug("LOCAL ICE generated: \(kind) — \(candidate.sdp.prefix(80))…")
 		Task { @MainActor in
 			await signaling.send(callId: activeCall.id, kind: "ice", payload: [
 				"candidate": candidate.sdp,
@@ -532,7 +532,7 @@ extension CallManager: RTCPeerConnectionDelegate {
 		case .complete: name = "complete"
 		@unknown default: name = "unknown"
 		}
-		print("📞 ICE gathering: \(name)")
+		Log.calls.debug("ICE gathering: \(name)")
 	}
 
 	nonisolated func peerConnection(_ pc: RTCPeerConnection, didAdd rtpReceiver: RTCRtpReceiver, streams: [RTCMediaStream]) {

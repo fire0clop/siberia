@@ -7,7 +7,9 @@ import os
 ///     Log.network.error("Refresh failed: \(error)")
 ///
 /// Категории отделены чтобы можно было фильтровать в Console.app по subsystem "app.siberia".
-struct LogCategory {
+// nonisolated: os.Logger потокобезопасен, логировать можно из любого потока
+// (WebRTC-делегаты, URLSession-колбэки), без прыжка на MainActor.
+nonisolated struct LogCategory {
 	let category: String
 	private let logger: Logger
 
@@ -33,7 +35,7 @@ struct LogCategory {
 	}
 }
 
-enum Log {
+nonisolated enum Log {
 	static let auth     = LogCategory("auth")
 	static let network  = LogCategory("network")
 	static let realtime = LogCategory("realtime")

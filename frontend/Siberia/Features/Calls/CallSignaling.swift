@@ -32,7 +32,7 @@ final class CallSignaling {
 		// Сливаем буфер в текущий менеджер
 		let toReplay = pendingInbound.filter { $0.callId == callId }
 		pendingInbound.removeAll { $0.callId == callId }
-		print("📞 CallSignaling.attach: replaying \(toReplay.count) buffered frames")
+		Log.calls.debug("attach: replaying \(toReplay.count) buffered frames")
 		for item in toReplay {
 			await deliverToManager(item.frame)
 		}
@@ -52,10 +52,10 @@ final class CallSignaling {
 	/// валидацию участия + публикует в user:{peer_id} канал.
 	func send(callId: Int, kind: String, payload: [String: Any]) async {
 		guard let sender else {
-			print("📞 CallSignaling.send: no sender! call=\(callId) kind=\(kind)")
+			Log.calls.error("send: no sender! call=\(callId) kind=\(kind)")
 			return
 		}
-		print("📞 OUT: \(kind) call=\(callId)")
+		Log.calls.debug("OUT: \(kind) call=\(callId)")
 		let frame: [String: Any] = [
 			"type": "call_signal",
 			"call_id": callId,
@@ -80,7 +80,7 @@ final class CallSignaling {
 		}
 
 		// Иначе буферизуем — менеджер появится позже (после attach при accept)
-		print("📞 BUFFERING inbound: kind=\(obj["kind"] ?? "?") call=\(callId)")
+		Log.calls.debug("BUFFERING inbound: kind=\(obj["kind"] ?? "?") call=\(callId)")
 		pendingInbound.append((callId: callId, frame: obj))
 	}
 

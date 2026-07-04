@@ -15,7 +15,16 @@ import Foundation
 /// 3. Xcode подставит значение при сборке.
 enum APIConfig {
 
-	private static let fallbackBaseURL = "http://192.168.1.134:8000"
+	/// Fallback применяется только когда SiberiaAPIBaseURL не задан в Info.plist.
+	/// В Debug — адрес машины разработчика в локальной сети; в Release LAN-адрес
+	/// недопустим, поэтому подставляется продовый домен.
+	private static let fallbackBaseURL: String = {
+		#if DEBUG
+		return "http://192.168.1.134:8000"
+		#else
+		return "https://api.siberia.app"
+		#endif
+	}()
 
 	nonisolated(unsafe) static var baseURL: String = {
 		if let configured = Bundle.main.object(forInfoDictionaryKey: "SiberiaAPIBaseURL") as? String,

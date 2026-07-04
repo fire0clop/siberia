@@ -137,7 +137,7 @@ final class APIClient {
 		let boundary = "SibBoundary-\(UUID().uuidString.prefix(8))"
 		var body = Data()
 
-		func append(_ string: String) { body.append(string.data(using: .utf8)!) }
+		func append(_ string: String) { body.append(Data(string.utf8)) }
 
 		// File field
 		append("--\(boundary)\r\n")

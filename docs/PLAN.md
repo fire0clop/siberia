@@ -28,12 +28,14 @@ iOS покрывает большую часть фич. Дальше — бло
       до `ev.used` с `ev=None` не дойти
 - [x] WS-токен через `?token=` отключён в production (только Authorization header)
 
-## [ ] Блок 2 — Мелкие баги iOS
+## [x] Блок 2 — Мелкие баги iOS (закрыт 2026-07-04)
 
-- [ ] `APIConfig.swift`: убрать hardcoded fallback `http://192.168.1.134:8000`
-- [ ] Force unwrap: `ChatCacheService.swift` (`.first!`), `AuthViewModel.swift` (email `.last!`),
-      `MessageNotifications.swift` (`as!`), `APIClient.swift` (`.data(using:)!`)
-- [ ] `print()` → `Log.*` в TokenStorage, CallManager, CallSignaling
+- [x] `APIConfig.swift`: LAN-fallback оставлен только в Debug; в Release — прод-домен
+- [x] Force unwrap: `ChatCacheService.swift` (`.first!`), `AuthViewModel.swift` (email `.last!`,
+      крэшился на "@"), `MessageNotifications.swift` (`as!`), `APIClient.swift` (`Data(string.utf8)`)
+- [x] `print()` → `Log.*` в TokenStorage, CallManager, CallSignaling (15 вызовов);
+      Logger помечен `nonisolated` — логирование из WebRTC-делегатов без прыжка на MainActor
+- [x] Сборка проверена: xcodebuild build зелёный, 0 новых warnings
 
 ## [ ] Блок 3 — Push-уведомления (по чек-листу из ROADMAP)
 
@@ -53,6 +55,9 @@ iOS покрывает большую часть фич. Дальше — бло
 
 ## [ ] Блок 5 — Тесты iOS
 
+- [ ] ⚠️ Таргета SiberiaTests в Xcode-проекте НЕТ: ChatCacheServiceTests.swift (12 тестов)
+      лежит на диске, но не подключён и никогда не запускался. Создать test target,
+      подключить файл, настроить схему на test action
 - [ ] APIClient: refresh-флоу, обработка ошибок, multipart
 - [ ] RealtimeSocket: reconnect/backoff, дедупликация
 - [ ] AuthViewModel: валидация, 2FA-флоу

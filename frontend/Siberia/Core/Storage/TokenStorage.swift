@@ -93,17 +93,17 @@ final class TokenStorage: @unchecked Sendable {
 			addQuery.merge(attributes) { _, new in new }
 			let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
 			if addStatus != errSecSuccess {
-				print("TokenStorage: SecItemAdd status=\(addStatus) for \(account)")
+				Log.auth.error("TokenStorage: SecItemAdd status=\(addStatus) for \(account)")
 			}
 		} else if updateStatus != errSecSuccess {
-			print("TokenStorage: SecItemUpdate status=\(updateStatus) for \(account)")
+			Log.auth.error("TokenStorage: SecItemUpdate status=\(updateStatus) for \(account)")
 		}
 	}
 
 	private func delete(_ account: String) {
 		let status = SecItemDelete(baseQuery(for: account) as CFDictionary)
 		if status != errSecSuccess && status != errSecItemNotFound {
-			print("TokenStorage: SecItemDelete status=\(status) for \(account)")
+			Log.auth.error("TokenStorage: SecItemDelete status=\(status) for \(account)")
 		}
 	}
 }

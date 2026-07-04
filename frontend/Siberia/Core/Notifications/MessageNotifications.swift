@@ -77,8 +77,8 @@ enum MessageNotifications {
 		// Attach local thumbnail if we have a URL cached locally
 		if let thumbStr = thumbnailURL, let thumbURL = URL(string: thumbStr) {
 			Task {
-				if let attachment = await downloadAttachment(from: thumbURL, messageId: messageId) {
-					let richContent = content.mutableCopy() as! UNMutableNotificationContent
+				if let attachment = await downloadAttachment(from: thumbURL, messageId: messageId),
+				   let richContent = content.mutableCopy() as? UNMutableNotificationContent {
 					richContent.attachments = [attachment]
 					schedule(content: richContent, messageId: messageId)
 				} else {

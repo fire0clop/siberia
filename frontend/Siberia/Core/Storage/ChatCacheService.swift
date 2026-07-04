@@ -6,7 +6,8 @@ final class ChatCacheService {
     private let decoder = JSONDecoder()
 
     private var dir: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
     }
 
     private init() {}
