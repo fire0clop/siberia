@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -11,7 +11,7 @@ from sqlalchemy.future import select
 from db import get_db
 from utils.deps import get_current_user
 from schemas.chat import ChatCreate, ChatOut, GroupCreate, ChatPatch, ChatMemberOut, AddMembersRequest, RoleChangeRequest
-from schemas.message import MessageCreate, MessageSendResponse, BulkReadRequest
+from schemas.message import MessageCreate, BulkReadRequest
 from schemas.sync import ChatSyncResponse, ChatUpdateItem
 from schemas.user import UserOut
 from services.user_service import build_user_out
@@ -443,7 +443,7 @@ async def list_scheduled_messages(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from datetime import datetime, timezone
+    from datetime import datetime
     from models.message import Message
     from sqlalchemy.future import select as sa_select
 

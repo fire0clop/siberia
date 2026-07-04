@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 
 from arq import cron
 from arq.connections import RedisSettings
-from sqlalchemy.future import select
 
 from config import settings
 from db import async_session_maker

@@ -4,11 +4,9 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
 
 from models.chat import Chat, ChatType
 from models.chat_member import ChatMember, MemberRole
-from models.user import User
 from models.chat_update import ChatUpdateEventType
 from services.sync_engine import lock_chat_row, log_update_on_locked_chat, build_envelope, broadcast_envelope
 

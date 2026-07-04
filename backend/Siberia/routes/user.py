@@ -22,10 +22,10 @@ from utils.redis import is_online
 from models.user import User
 from models.media import Media, MediaType
 from models.message_status import MessageStatus, MessageStatusEnum
-from models.privacy_settings import PrivacySetting, Visibility
+from models.privacy_settings import Visibility
 from models.login_event import LoginEvent
 from services.user_search import search_users
-from services.user_service import _get_privacy, build_user_out, update_last_seen, invalidate_user_profile
+from services.user_service import _get_privacy, build_user_out, invalidate_user_profile
 from services.block_service import block_user, unblock_user, get_blocked_users
 from services.auth import change_password, delete_account
 

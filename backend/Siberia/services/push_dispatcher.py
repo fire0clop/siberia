@@ -19,11 +19,9 @@ from sqlalchemy.future import select
 
 from db import async_session_maker
 from models.chat_member import ChatMember
-from models.message import Message
 from models.message_status import MessageStatus, MessageStatusEnum
 from models.push_token import PushToken, PushPlatform, PushTokenKind
 from models.chat_mute import ChatMuteSetting
-from models.user import User
 from utils.redis import redis_client
 from services import push_apns, push_fcm
 

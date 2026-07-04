@@ -3,22 +3,20 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
-
-logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import and_, or_
 
 from models.user import User
-from models.media import Media, MediaType
+from models.media import Media
 from models.privacy_settings import PrivacySetting, Visibility
 from models.friend import Friend, FriendStatus
 from utils.redis import cache_set, cache_get, cache_delete
+
+logger = logging.getLogger(__name__)
 
 _PROFILE_TTL = 300  # 5 minutes
 

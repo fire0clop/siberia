@@ -2,14 +2,13 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import desc, and_, or_, func
+from sqlalchemy import desc, func
 
 from fastapi import HTTPException
 
 from models.chat import Chat, ChatType
 from models.chat_member import ChatMember, MemberRole
 from models.user import User
-from models.friend import Friend, FriendStatus
 from models.privacy_settings import Visibility
 from services.block_service import check_not_blocked
 from services.user_service import _get_privacy, _are_friends

@@ -8,7 +8,6 @@ FCM push через Legacy HTTP API.
 Зависимость: только httpx (уже есть в проекте).
 """
 import logging
-from typing import Any
 
 import httpx
 

@@ -8,11 +8,10 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, and_
+from sqlalchemy import or_
 from sqlalchemy.future import select
 
 from db import async_session_maker
-from models.user import User
 from models.friend import Friend, FriendStatus
 from models.chat import Chat, ChatType
 from models.chat_member import ChatMember

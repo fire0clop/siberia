@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import or_, and_, delete as sa_delete
+from sqlalchemy import or_, and_
 from fastapi import HTTPException
 
 from models.friend import Friend, FriendStatus

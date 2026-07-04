@@ -2,13 +2,13 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
 from utils.deps import get_current_user
-from schemas.chat import ChannelCreate, ChatOut, ChatPatch
+from schemas.chat import ChannelCreate, ChatOut
 
 from services.channel_service import (
     create_channel,
@@ -16,7 +16,6 @@ from services.channel_service import (
     subscribe_by_invite,
     unsubscribe_channel,
     update_channel,
-    search_channels,
     get_channel_for_user,
 )
 

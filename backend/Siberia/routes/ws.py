@@ -1,10 +1,12 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from sqlalchemy.future import select
 
+from config import settings
 from db import async_session_maker
 from models.user import User
 from models.chat_member import ChatMember
@@ -37,11 +39,7 @@ def _chat_presence_envelope(user_id: int, chat_id: int, online: bool) -> str:
         },
     })
 
-import logging
-
 logger = logging.getLogger(__name__)
-
-from config import settings
 
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 

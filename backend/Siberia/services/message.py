@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import and_, delete as sa_delete
+from sqlalchemy import delete as sa_delete
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -143,7 +143,6 @@ async def create_message(
     await check_user_in_chat(db, user_id, chat_id)
 
     # Channels: only owner/admin can post
-    from models.chat import Chat as _Chat, ChatType as _ChatType
     from models.chat_member import ChatMember as _ChatMember, MemberRole as _MemberRole
     _chat_type_check = await db.execute(
         select(_ChatMember).where(_ChatMember.chat_id == chat_id, _ChatMember.user_id == user_id)
