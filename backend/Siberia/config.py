@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     # If set, replaces S3_ENDPOINT host in generated presigned URLs so mobile clients can reach storage.
     S3_PUBLIC_URL: str = ""
 
+    # ── TURN / STUN (WebRTC ICE) ──────────────────────────────────────────────
+    # STUN всегда бесплатный (Google по умолчанию). Для звонков за симметричным
+    # NAT нужен TURN — разворачивается coturn (см. backend/deploy/coturn).
+    STUN_URLS: str = "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+    # coturn с use-auth-secret / static-auth-secret: сервер выдаёт клиенту
+    # короткоживущие HMAC-креды, не зашивая пароль в приложение.
+    TURN_URLS: str = ""                 # "turn:turn.siberia.app:3478,turns:turn.siberia.app:5349"
+    TURN_STATIC_AUTH_SECRET: str = ""   # тот же static-auth-secret что в turnserver.conf
+    TURN_TTL_SECONDS: int = 86400       # срок жизни выданных TURN-кредов
+
     # ── SMTP (email verification / alerts) ───────────────────────────────────
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 587

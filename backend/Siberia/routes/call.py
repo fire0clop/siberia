@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
 from utils.deps import get_current_user
-from schemas.call import CallInitiate, CallOut, CallWithPeers
+from schemas.call import CallInitiate, CallOut, CallWithPeers, IceConfigResponse
 from schemas.user import UserOut
 from services.user_service import build_user_out
 from services.call_service import (
@@ -14,9 +14,17 @@ from services.call_service import (
     cancel_call,
     end_call,
     list_history,
+    build_ice_servers,
 )
 
 router = APIRouter(prefix="/calls", tags=["Calls"])
+
+
+@router.get("/ice-servers", response_model=IceConfigResponse)
+async def ice_servers(current=Depends(get_current_user)):
+    """ICE-конфиг (STUN + эфемерный TURN) для WebRTC. Клиент запрашивает
+    перед установкой звонка, чтобы не зашивать TURN-пароль в приложение."""
+    return build_ice_servers(current["user"].id)
 
 
 @router.post("", response_model=CallOut)

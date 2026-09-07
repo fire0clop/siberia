@@ -27,6 +27,19 @@ struct Call: Codable, Identifiable, Equatable {
 	let durationSeconds: Int?
 }
 
+// MARK: – ICE-конфиг (GET /calls/ice-servers)
+
+struct IceServerDTO: Codable {
+	let urls: [String]
+	let username: String?
+	let credential: String?
+}
+
+struct IceConfigResponse: Codable {
+	let iceServers: [IceServerDTO]
+	let ttlExpiresAt: Int?
+}
+
 // MARK: – Входящий звонок (WS-событие call_incoming)
 
 struct IncomingCallInfo: Identifiable, Equatable {

@@ -15,17 +15,32 @@ final class CallManager: NSObject {
 
 	// MARK: – Конфиг
 
-	/// STUN — публичные гугловские. Когда поднимешь свой coturn, добавь сюда
-	/// RTCIceServer(urlStrings: ["turn:siberia.app:3478"], username: "...", credential: "...")
-	private static let iceServers: [RTCIceServer] = [
+	/// Fallback STUN, если бэк недоступен. Основной источник — GET /calls/ice-servers
+	/// (STUN + эфемерный TURN), запрашивается в start() перед созданием PeerConnection.
+	private static let fallbackIceServers: [RTCIceServer] = [
 		RTCIceServer(urlStrings: [
 			"stun:stun.l.google.com:19302",
 			"stun:stun1.l.google.com:19302",
 		]),
-		// TODO: turn — подставить когда задеплоим coturn:
-		// RTCIceServer(urlStrings: ["turn:turn.siberia.app:3478"],
-		//              username: "<user>", credential: "<secret>")
 	]
+
+	/// Тянет ICE-конфиг с бэка; при ошибке — публичный STUN, чтобы звонок
+	/// хотя бы попробовал соединиться в простом NAT.
+	private static func resolveIceServers() async -> [RTCIceServer] {
+		do {
+			let cfg = try await CallService.shared.fetchIceServers()
+			let servers = cfg.iceServers.map { dto -> RTCIceServer in
+				if let user = dto.username, let cred = dto.credential {
+					return RTCIceServer(urlStrings: dto.urls, username: user, credential: cred)
+				}
+				return RTCIceServer(urlStrings: dto.urls)
+			}
+			return servers.isEmpty ? fallbackIceServers : servers
+		} catch {
+			Log.calls.error("ICE fetch failed, using fallback STUN: \(String(describing: error))")
+			return fallbackIceServers
+		}
+	}
 
 	// MARK: – State
 
@@ -75,7 +90,7 @@ final class CallManager: NSObject {
 		configureAudioSession()
 
 		let config = RTCConfiguration()
-		config.iceServers = Self.iceServers
+		config.iceServers = await Self.resolveIceServers()
 		config.sdpSemantics = .unifiedPlan
 		config.continualGatheringPolicy = .gatherContinually
 		config.bundlePolicy = .maxBundle

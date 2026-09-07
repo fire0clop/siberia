@@ -32,4 +32,11 @@ final class CallService {
 		let data = try await APIClient.shared.request(path: "/calls/\(callId)/end", method: "POST")
 		return try APIClient.shared.decode(Call.self, from: data)
 	}
+
+	/// ICE-конфиг (STUN + эфемерный TURN) с бэка. TURN-пароль короткоживущий
+	/// и не зашит в приложение.
+	func fetchIceServers() async throws -> IceConfigResponse {
+		let data = try await APIClient.shared.request(path: "/calls/ice-servers", method: "GET")
+		return try APIClient.shared.decode(IceConfigResponse.self, from: data)
+	}
 }

@@ -105,6 +105,45 @@ async def expire_stale_ringing_calls(
     return stale
 
 
+# ── ICE / TURN credentials ───────────────────────────────────────────────────
+
+def build_ice_servers(user_id: int) -> dict:
+    """ICE-конфиг для клиента: STUN всегда + TURN с эфемерными HMAC-кредами.
+
+    Схема coturn REST (use-auth-secret): username = "<expiry>:<user_id>",
+    password = base64(HMAC-SHA1(static_auth_secret, username)). Пароль не
+    зашивается в приложение и живёт ограниченное время.
+    """
+    import base64
+    import hashlib
+    import hmac
+    import time
+
+    from config import settings
+
+    servers: list[dict] = []
+
+    stun = [u.strip() for u in settings.STUN_URLS.split(",") if u.strip()]
+    if stun:
+        servers.append({"urls": stun, "username": None, "credential": None})
+
+    ttl_expires_at = None
+    turn_urls = [u.strip() for u in settings.TURN_URLS.split(",") if u.strip()]
+    if turn_urls and settings.TURN_STATIC_AUTH_SECRET:
+        expiry = int(time.time()) + settings.TURN_TTL_SECONDS
+        username = f"{expiry}:{user_id}"
+        digest = hmac.new(
+            settings.TURN_STATIC_AUTH_SECRET.encode(),
+            username.encode(),
+            hashlib.sha1,
+        ).digest()
+        credential = base64.b64encode(digest).decode()
+        servers.append({"urls": turn_urls, "username": username, "credential": credential})
+        ttl_expires_at = expiry
+
+    return {"ice_servers": servers, "ttl_expires_at": ttl_expires_at}
+
+
 # ── Initiate ─────────────────────────────────────────────────────────────────
 
 async def initiate_call(

@@ -32,3 +32,15 @@ class CallWithPeers(CallOut):
     и для истории звонков."""
     caller: UserOut
     callee: UserOut
+
+
+class IceServer(BaseModel):
+    urls: list[str]
+    username: str | None = None
+    credential: str | None = None
+
+
+class IceConfigResponse(BaseModel):
+    ice_servers: list[IceServer]
+    # Когда истекают выданные TURN-креды (unix ts). null если TURN не настроен.
+    ttl_expires_at: int | None = None
