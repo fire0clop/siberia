@@ -97,6 +97,8 @@ final class ChatCacheService {
         let replyToMessageId: Int?
         let mediaId: String?
         let createdAt: TimeInterval
+        // Разметка текста; optional с дефолтом — старые файлы очереди декодятся
+        var entities: [MessageEntity]? = nil
     }
 
     func saveOutgoingQueue(_ items: [PendingOutgoing]) {

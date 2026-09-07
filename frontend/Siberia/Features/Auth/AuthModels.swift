@@ -294,6 +294,9 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 	var reactions: [MessageReaction]?
 	/// "text" | "system" | nil (старый бэк без поля)
 	let type: String?
+	/// Разметка текста (bold/italic/spoiler…); var с дефолтом — чтобы
+	/// существующие memberwise-вызовы продолжали компилироваться
+	var entities: [MessageEntity]? = nil
 
 	var isDeleted: Bool { deleted ?? (deletedAt != nil) }
 	var hasMedia: Bool { mediaId != nil }
@@ -312,7 +315,7 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 			forwardedFromUserId: forwardedFromUserId,
 			forwardedFromChatId: forwardedFromChatId,
 			mentionUserIds: mentionUserIds, reactions: reactions,
-			type: type
+			type: type, entities: entities
 		)
 	}
 }
@@ -324,10 +327,12 @@ struct MessageSendBody: Encodable {
 	let forwardMessageId: Int?
 	let mediaId: String?
 	let mentionUserIds: [Int]?
+	var entities: [MessageEntity]? = nil
 }
 
 struct MessagePatchBody: Encodable {
 	let content: String
+	var entities: [MessageEntity]? = nil
 }
 
 struct MessageSendResult: Codable {

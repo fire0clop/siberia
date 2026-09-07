@@ -146,7 +146,8 @@ extension ChatDetailViewModel {
 					forwardedFromUserId: old.forwardedFromUserId,
 					forwardedFromChatId: old.forwardedFromChatId,
 					mentionUserIds: old.mentionUserIds, reactions: old.reactions,
-					type: old.type
+					type: old.type,
+					entities: parseEntities(payload["entities"])
 				)
 			}
 			updateSeq(from: obj)
@@ -235,6 +236,17 @@ extension ChatDetailViewModel {
 
 	// MARK: Shared helpers (used by realtime handlers)
 
+	func parseEntities(_ raw: Any?) -> [MessageEntity]? {
+		guard let arr = raw as? [[String: Any]], !arr.isEmpty else { return nil }
+		let parsed = arr.compactMap { d -> MessageEntity? in
+			guard let type = d["type"] as? String,
+			      let offset = intVal(d["offset"]),
+			      let length = intVal(d["length"]) else { return nil }
+			return MessageEntity(type: type, offset: offset, length: length)
+		}
+		return parsed.isEmpty ? nil : parsed
+	}
+
 	func decodeMessage(from obj: [String: Any]) -> ChatMessage? {
 		guard let msgId    = intVal(obj["message_id"]),
 		      let payload  = obj["payload"] as? [String: Any]
@@ -260,7 +272,8 @@ extension ChatDetailViewModel {
 			forwardedFromChatId:       intVal(payload["forwarded_from_chat_id"]),
 			mentionUserIds:            payload["mention_user_ids"] as? [Int],
 			reactions:                 nil,
-			type:                      payload["type"] as? String
+			type:                      payload["type"] as? String,
+			entities:                  parseEntities(payload["entities"])
 		)
 	}
 

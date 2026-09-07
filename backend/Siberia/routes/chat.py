@@ -152,6 +152,7 @@ async def send_chat_message(
         media_id=data.media_id,
         forward_message_id=data.forward_message_id,
         send_at=data.send_at,
+        entities=data.entities,
     )
     media_type = None
     if msg.media_id:
@@ -173,6 +174,7 @@ async def send_chat_message(
             "forwarded_from_user_id": msg.forwarded_from_user_id,
             "forwarded_from_chat_id": msg.forwarded_from_chat_id,
             "mention_user_ids": msg.mention_user_ids,
+            "entities": msg.text_entities,
             "reactions": None,
             "send_at": msg.send_at,
             "created_at": msg.created_at,

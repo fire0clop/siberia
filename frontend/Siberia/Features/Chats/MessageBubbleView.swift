@@ -71,7 +71,7 @@ struct MessageBubbleView: View {
 					.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 2)
 			}
 			VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
-				if let t = m.text, !t.isEmpty { mentionText(t, mine: mine) }
+				if let t = m.text, !t.isEmpty { entityText(m, mine: mine) }
 				timeRow(m, mine: mine, pending: pending)
 			}
 			.padding(.horizontal, 12)
@@ -101,7 +101,7 @@ struct MessageBubbleView: View {
 				}
 				imageBubbleContent(mediaId: mediaId, mine: mine)
 				if let t = m.text, !t.isEmpty {
-					mentionText(t, mine: mine).padding(.horizontal, 10).padding(.top, 5)
+					entityText(m, mine: mine).padding(.horizontal, 10).padding(.top, 5)
 				}
 				timeRow(m, mine: mine, pending: pending)
 					.padding(.horizontal, 10).padding(.top, 2).padding(.bottom, 6)
@@ -135,7 +135,7 @@ struct MessageBubbleView: View {
 			VStack(alignment: mine ? .trailing : .leading, spacing: 6) {
 				if let q = quoted { replyQuote(q, mine: mine) }
 				inlineMediaContent(mediaId: mediaId, mediaType: mediaType, m: m, mine: mine)
-				if let t = m.text, !t.isEmpty { mentionText(t, mine: mine) }
+				if let t = m.text, !t.isEmpty { entityText(m, mine: mine) }
 				timeRow(m, mine: mine, pending: pending)
 			}
 			.padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
@@ -536,22 +536,23 @@ struct MessageBubbleView: View {
 		return ""
 	}
 
-	// MARK: – Mention-highlighted text
+	// MARK: – Rich text: entities (bold/italic/spoiler…) + подсветка @упоминаний
 
-	private func mentionText(_ text: String, mine: Bool) -> some View {
-		let words = text.components(separatedBy: " ")
-		var attr  = AttributedString()
-		for (i, word) in words.enumerated() {
-			var chunk = AttributedString(i < words.count - 1 ? word + " " : word)
-			if word.hasPrefix("@") {
-				chunk.foregroundColor = mine ? .white : ChatDetailView.accent
-				chunk.font = .body.bold()
-			} else {
-				chunk.foregroundColor = mine ? .white : .primary
-				chunk.font = .body
+	private func entityText(_ m: ChatMessage, mine: Bool) -> some View {
+		let text = m.text ?? ""
+		let hasSpoiler = m.entities?.contains { $0.type == "spoiler" } ?? false
+		let revealed = vm.revealedSpoilerMessageIds.contains(m.id)
+		return Text(EntityRenderer.attributed(
+			text: text,
+			entities: m.entities,
+			mine: mine,
+			spoilersRevealed: !hasSpoiler || revealed
+		))
+		.onTapGesture {
+			// Tap-to-reveal для спойлеров
+			if hasSpoiler && !revealed {
+				vm.revealedSpoilerMessageIds.insert(m.id)
 			}
-			attr += chunk
 		}
-		return Text(attr)
 	}
 }

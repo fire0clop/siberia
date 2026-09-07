@@ -51,6 +51,7 @@ async def build_message_new_payload(db: AsyncSession, message: Message) -> dict:
     return {
         "user_id": message.user_id,
         "text": message.text,
+        "entities": message.text_entities,
         "media_id": str(message.media_id) if message.media_id else None,
         "media_type": media_type,
         "client_message_id": str(message.client_message_id) if message.client_message_id else None,
@@ -143,6 +144,37 @@ async def _validate_media_access(
         raise HTTPException(status_code=403, detail="Media not accessible")
 
 
+_ALLOWED_ENTITY_TYPES = {"bold", "italic", "underline", "strikethrough", "code", "pre", "spoiler"}
+
+
+def validate_entities(text: str | None, entities) -> list[dict] | None:
+    """Проверяет entities против текста. offset/length — UTF-16 code units.
+
+    Клиенту нельзя верить: разметка за пределами текста ломала бы рендер
+    у всех получателей.
+    """
+    if not entities:
+        return None
+    if not text:
+        raise HTTPException(status_code=400, detail="Entities require text")
+    if len(entities) > 100:
+        raise HTTPException(status_code=400, detail="Too many entities")
+    text_len_utf16 = len(text.encode("utf-16-le")) // 2
+    out: list[dict] = []
+    for e in entities:
+        etype = e.type if hasattr(e, "type") else e.get("type")
+        offset = e.offset if hasattr(e, "offset") else e.get("offset")
+        length = e.length if hasattr(e, "length") else e.get("length")
+        if etype not in _ALLOWED_ENTITY_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unknown entity type: {etype}")
+        if not isinstance(offset, int) or not isinstance(length, int) \
+                or offset < 0 or length < 1 or offset + length > text_len_utf16:
+            raise HTTPException(status_code=400, detail="Entity out of text bounds")
+        out.append({"type": etype, "offset": offset, "length": length})
+    out.sort(key=lambda x: (x["offset"], x["length"]))
+    return out
+
+
 async def _resolve_mentions(db: AsyncSession, text: str | None, chat_id: int) -> list[int]:
     """Extract @username mentions and resolve to user IDs within the chat."""
     if not text:
@@ -178,6 +210,7 @@ async def create_message(
     media_id: UUID | None = None,
     forward_message_id: int | None = None,
     send_at=None,
+    entities=None,
 ) -> tuple[Message, bool]:
     await check_user_in_chat(db, user_id, chat_id)
 
@@ -223,6 +256,8 @@ async def create_message(
         forwarded_from_chat_id = original.chat_id
         if text is None:
             text = original.text
+            if entities is None:
+                entities = original.text_entities  # разметка едет вместе с текстом
         if media_id is None and original.media_id is not None:
             media_id = original.media_id
 
@@ -230,6 +265,7 @@ async def create_message(
         await _validate_media_access(db, media_id, user_id)
 
     mention_user_ids = await _resolve_mentions(db, text, chat_id) or None
+    validated_entities = validate_entities(text, entities)
 
     chat = await lock_chat_row(db, chat_id)
 
@@ -257,6 +293,7 @@ async def create_message(
         forwarded_from_user_id=forwarded_from_user_id,
         forwarded_from_chat_id=forwarded_from_chat_id,
         mention_user_ids=mention_user_ids,
+        text_entities=validated_entities,
         send_at=send_at,
     )
     db.add(message)
@@ -303,6 +340,7 @@ async def create_message(
     payload = {
         "user_id": user_id,
         "text": text,
+        "entities": validated_entities,
         "media_id": str(media_id) if media_id else None,
         "media_type": _media_type,
         "client_message_id": str(client_message_id) if client_message_id else None,
@@ -363,6 +401,7 @@ async def create_message_auto(
     client_message_id: UUID | None = None,
     reply_to_message_id: int | None = None,
     media_id: UUID | None = None,
+    entities=None,
 ) -> dict[str, Any]:
     chat = await get_or_create_private_chat(db, sender_id, target_user_id)
     message, idempotent = await create_message(
@@ -375,6 +414,7 @@ async def create_message_auto(
         media_id=media_id,
         forward_message_id=None,
         send_at=None,
+        entities=entities,
     )
     return {
         "chat_id": chat.id,
@@ -384,7 +424,7 @@ async def create_message_auto(
 
 
 async def edit_message(
-    db: AsyncSession, user_id: int, message_id: int, new_text: str
+    db: AsyncSession, user_id: int, message_id: int, new_text: str, entities=None
 ) -> Message:
     from models.message_edit_history import MessageEditHistory
 
@@ -407,7 +447,9 @@ async def edit_message(
     )
     db.add(history_row)
 
+    validated_entities = validate_entities(new_text, entities)
     message.text = new_text
+    message.text_entities = validated_entities
     message.edited_at = datetime.now(timezone.utc)
     await db.flush()
 
@@ -416,7 +458,8 @@ async def edit_message(
         chat,
         ChatUpdateEventType.message_edit,
         message.id,
-        {"text": new_text, "edited_at": message.edited_at.isoformat()},
+        {"text": new_text, "entities": validated_entities,
+         "edited_at": message.edited_at.isoformat()},
     )
 
     await db.commit()
@@ -427,7 +470,8 @@ async def edit_message(
         seq,
         ChatUpdateEventType.message_edit,
         message.id,
-        {"text": new_text, "edited_at": message.edited_at.isoformat()},
+        {"text": new_text, "entities": validated_entities,
+         "edited_at": message.edited_at.isoformat()},
     )
     await broadcast_envelope(message.chat_id, env)
 

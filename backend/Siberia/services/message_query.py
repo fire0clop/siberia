@@ -111,6 +111,7 @@ async def get_messages_with_status(
                 "forwarded_from_user_id": msg.forwarded_from_user_id,
                 "forwarded_from_chat_id": msg.forwarded_from_chat_id,
                 "mention_user_ids": msg.mention_user_ids,
+                "entities": msg.text_entities if not deleted else None,
                 "send_at": msg.send_at,
                 "reactions": reactions_map.get(msg.id) or None,
                 "client_message_id": str(msg.client_message_id)

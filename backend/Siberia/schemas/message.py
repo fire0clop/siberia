@@ -15,8 +15,16 @@ class MediaOut(BaseModel):
     original_name: Optional[str] = None
 
 
+class MessageEntity(BaseModel):
+    """Разметка фрагмента текста. offset/length — UTF-16 code units."""
+    type: str = Field(..., pattern=r"^(bold|italic|underline|strikethrough|code|pre|spoiler)$")
+    offset: int = Field(..., ge=0)
+    length: int = Field(..., ge=1)
+
+
 class MessageCreate(BaseModel):
     content: Optional[str] = Field(None, min_length=1, max_length=4096)
+    entities: Optional[list[MessageEntity]] = Field(None, max_length=100)
     media_id: Optional[UUID] = None
     client_message_id: Optional[UUID] = None
     reply_to_message_id: Optional[int] = None
@@ -33,12 +41,14 @@ class MessageCreate(BaseModel):
 class MessageCreateAuto(BaseModel):
     user_id: int
     content: str = Field(..., min_length=1, max_length=4096)
+    entities: Optional[list[MessageEntity]] = Field(None, max_length=100)
     client_message_id: Optional[UUID] = None
     reply_to_message_id: Optional[int] = None
 
 
 class MessagePatch(BaseModel):
     content: str = Field(..., min_length=1, max_length=4096)
+    entities: Optional[list[MessageEntity]] = Field(None, max_length=100)
 
 
 class ReactionRequest(BaseModel):
@@ -60,6 +70,7 @@ class MessageOut(BaseModel):
     forwarded_from_user_id: Optional[int] = None
     forwarded_from_chat_id: Optional[int] = None
     mention_user_ids: Optional[list[int]] = None
+    entities: Optional[list[MessageEntity]] = None
     reactions: Optional[dict[str, int]] = None
     send_at: Optional[datetime] = None
     created_at: datetime

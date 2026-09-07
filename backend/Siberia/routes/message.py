@@ -32,6 +32,7 @@ async def send_message_auto_route(
         data.content,
         client_message_id=data.client_message_id,
         reply_to_message_id=data.reply_to_message_id,
+        entities=data.entities,
     )
     return MessageAutoSendResponse(
         chat_id=result["chat_id"],
@@ -52,6 +53,7 @@ async def patch_message(
         current["user"].id,
         message_id,
         data.content,
+        entities=data.entities,
     )
 
 

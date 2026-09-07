@@ -48,6 +48,8 @@ final class ChatDetailViewModel: ObservableObject {
 	@Published var mediaDurations: [String: Int]    = [:]
 	@Published var mediaWaveforms: [String: [Float]] = [:]
 	@Published var videoThumbnailCache: [String: UIImage] = [:]
+	/// Сообщения, где пользователь раскрыл спойлеры (tap-to-reveal)
+	@Published var revealedSpoilerMessageIds: Set<Int> = []
 	/// Бюджет ретраев битого медиа (см. retryMediaLoad) + метка «безнадёжно»
 	var mediaRetryCounts: [String: Int] = [:]
 	@Published var failedMediaIds: Set<String> = []
@@ -399,8 +401,13 @@ final class ChatDetailViewModel: ObservableObject {
 	// MARK: – Send text
 
 	func send() async {
-		let t = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !t.isEmpty else { return }
+		let raw = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !raw.isEmpty else { return }
+		// Markdown → чистый текст + entities (Telegram-модель: сервер и другие
+		// клиенты видят уже разобранную разметку)
+		let parsed = MarkdownParser.parse(raw)
+		let t = parsed.text
+		let entities = parsed.entities.isEmpty ? nil : parsed.entities
 		let replyId = replyingTo?.id
 		let mentionIds = extractMentionIds(from: t)
 		draft = ""
@@ -408,7 +415,8 @@ final class ChatDetailViewModel: ObservableObject {
 		mentionSuggestions = []
 
 		let clientId = UUID()
-		let pending = makePendingMessage(text: t, clientId: clientId, replyTo: replyId)
+		var pending = makePendingMessage(text: t, clientId: clientId, replyTo: replyId)
+		pending.entities = entities
 		pendingClientIds.insert(clientId.uuidString)
 		upsert(pending)
 		scrollToBottomSignal += 1
@@ -421,14 +429,16 @@ final class ChatDetailViewModel: ObservableObject {
 			text: t,
 			replyToMessageId: replyId,
 			mediaId: nil,
-			createdAt: Date().timeIntervalSince1970
+			createdAt: Date().timeIntervalSince1970,
+			entities: entities
 		))
 
 		do {
 			let r = try await ChatService.shared.sendMessage(
 				chatId: chatId, text: t,
 				clientMessageId: clientId, replyTo: replyId,
-				mentionUserIds: mentionIds.isEmpty ? nil : mentionIds
+				mentionUserIds: mentionIds.isEmpty ? nil : mentionIds,
+				entities: entities
 			)
 			pendingClientIds.remove(clientId.uuidString)
 			messages.removeAll { $0.clientMessageId == clientId.uuidString && $0.id < 0 }
@@ -462,7 +472,8 @@ final class ChatDetailViewModel: ObservableObject {
 					chatId: chatId, text: item.text,
 					clientMessageId: cid,
 					replyTo: item.replyToMessageId,
-					mediaId: item.mediaId
+					mediaId: item.mediaId,
+					entities: item.entities
 				)
 				pendingClientIds.remove(item.clientMessageId)
 				messages.removeAll { $0.clientMessageId == item.clientMessageId && $0.id < 0 }
@@ -540,7 +551,11 @@ final class ChatDetailViewModel: ObservableObject {
 	func editMessage(_ m: ChatMessage, newText: String) async {
 		guard m.userId == currentUserId else { return }
 		do {
-			let updated = try await ChatService.shared.editMessage(messageId: m.id, newText: newText)
+			let parsed = MarkdownParser.parse(newText)
+			let updated = try await ChatService.shared.editMessage(
+				messageId: m.id, newText: parsed.text,
+				entities: parsed.entities.isEmpty ? nil : parsed.entities
+			)
 			upsert(updated.withResolvedChatId(chatId))
 		} catch {
 			self.error = error.localizedDescription

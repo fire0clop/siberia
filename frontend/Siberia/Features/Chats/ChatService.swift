@@ -153,7 +153,8 @@ final class ChatService {
 		replyTo: Int? = nil,
 		forwardMessageId: Int? = nil,
 		mediaId: String? = nil,
-		mentionUserIds: [Int]? = nil
+		mentionUserIds: [Int]? = nil,
+		entities: [MessageEntity]? = nil
 	) async throws -> MessageSendResult {
 		let body = try encoder().encode(MessageSendBody(
 			content: text,
@@ -161,7 +162,8 @@ final class ChatService {
 			replyToMessageId: replyTo,
 			forwardMessageId: forwardMessageId,
 			mediaId: mediaId,
-			mentionUserIds: mentionUserIds
+			mentionUserIds: mentionUserIds,
+			entities: entities
 		))
 		let data = try await APIClient.shared.request(
 			path: "/chats/\(chatId)/messages", method: "POST", body: body
@@ -169,8 +171,8 @@ final class ChatService {
 		return try APIClient.shared.decode(MessageSendResult.self, from: data)
 	}
 
-	func editMessage(messageId: Int, newText: String) async throws -> ChatMessage {
-		let body = try encoder().encode(MessagePatchBody(content: newText))
+	func editMessage(messageId: Int, newText: String, entities: [MessageEntity]? = nil) async throws -> ChatMessage {
+		let body = try encoder().encode(MessagePatchBody(content: newText, entities: entities))
 		let data = try await APIClient.shared.request(
 			path: "/messages/\(messageId)", method: "PATCH", body: body
 		)

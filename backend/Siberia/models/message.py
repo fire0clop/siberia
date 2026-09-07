@@ -50,6 +50,15 @@ class Message(Base):
 
     mention_user_ids = Column(JSONB, nullable=True)
 
+    # Разметка текста: [{"type": "bold"|"italic"|..., "offset": N, "length": M}]
+    # offset/length — в UTF-16 code units (общий знаменатель Swift/Python)
+    text_entities = Column(JSONB, nullable=True)
+
+    @property
+    def entities(self):
+        """Alias для pydantic from_attributes (API-поле называется entities)."""
+        return self.text_entities
+
     send_at = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
