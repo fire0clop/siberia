@@ -106,7 +106,7 @@ flowchart LR
 
 | Layer | Technology |
 |-------|-----------|
-| iOS UI | Swift 5.9, SwiftUI, MVVM + singleton services, Combine |
+| iOS UI | Swift 5, SwiftUI (iOS 26 target), MVVM + singleton services, Combine |
 | iOS networking | `URLSession` (`APIClient` with auto token-refresh), `URLSessionWebSocketTask` |
 | iOS realtime/calls | WebRTC (`stasel/WebRTC`), CallKit, PushKit, UserNotifications |
 | iOS storage | Keychain (tokens), on-disk chat cache, `URLCache` for media |
@@ -116,8 +116,8 @@ flowchart LR
 | Background jobs | ARQ (Redis-backed) for scheduled delivery and cleanup |
 | Object storage | S3-compatible (AWS S3 / Cloudflare R2 / MinIO) via `aioboto3`, Pillow thumbnails |
 | Auth | `python-jose` JWT, `passlib[bcrypt]`, `pyotp` TOTP |
-| Push | APNs (HTTP/2 + JWT, `httpx[http2]`), FCM |
-| Calls infra | coturn (TURN/STUN), Google public STUN |
+| Push | APNs (HTTP/2 + JWT, `httpx[http2]`), FCM HTTP v1 |
+| Calls infra | coturn (TURN, ephemeral HMAC creds via `GET /calls/ice-servers`), Google STUN fallback |
 | Ops | Docker + Docker Compose, GitHub Actions CI (ruff + E2E), Prometheus metrics, structured JSON logging |
 
 ## Project Structure
@@ -183,7 +183,7 @@ arq worker.WorkerSettings
 
 ### iOS
 
-Requires Xcode 15+ and iOS 17+.
+Requires Xcode 26+ (deployment target iOS 26).
 
 ```bash
 open frontend/Siberia.xcodeproj
@@ -208,18 +208,23 @@ Interactive docs live at `/docs` (Swagger) and `/redoc` once the server is runni
 | Calls | `POST /calls` · `/{id}/accept` · `/decline` · `/cancel` · `/end` · `GET /calls/history` | 1-to-1 voice/video signaling |
 | Search | `GET /search/messages` · `GET /search` | Full-text + global search |
 | Realtime | `WS /ws/me` · `WS /ws/{chat_id}` · `GET /chats/{id}/sync` | Live events + catch-up |
+| Folders / Archive | `GET/POST /folders` · `PUT /folders/{id}/chats` · `POST/DELETE /chats/{id}/archive` | Custom folders + per-user archive |
+| Stories | `POST /stories` · `GET /stories/feed` · `/{id}/view` · `/{id}/views` | 24h ephemeral media for friends |
+| E2E | `PUT/GET /e2e/keys` · `POST /chats/secret` | X25519 identity keys + secret chats (opaque ciphertext) |
+| ICE | `GET /calls/ice-servers` | STUN + ephemeral TURN credentials |
 
 ## Status & Roadmap
 
-The **backend is feature-complete** across its planned phases: auth & sessions, profiles, friends & blocking, private/group chats, channels, rich messages, media, full-text + global search, push (APNs/FCM), 2FA & account security, and production concerns (rate limiting, health checks, structured logging, Prometheus, Docker, CI). The **iOS client** covers the full auth flow (including 2FA and email verification), 1-to-1 and group chats, channels, media, reactions, presence, global search, offline cache, and 1-to-1 WebRTC voice/video calls with CallKit.
+The **backend is feature-complete** across its planned phases: auth & sessions, profiles, friends & blocking, private/group chats, channels, rich messages (entities, replies, forwards, reactions, pins, edit history), media, link previews, chat folders & archive, stories, E2E secret chats (v1), full-text + global search, push (APNs / FCM v1 with friend/group/VoIP events), 2FA & account security, and production concerns (per-IP rate limiting, Redis-outage fallback, health checks, structured logging, Prometheus, Docker, CI). The **iOS client** covers the full auth flow (including 2FA and email verification), 1-to-1/group/secret chats, channels, markdown formatting with tap-to-reveal spoilers, folders & archive, stories with a full-screen viewer, media, reactions, presence, global search, offline cache, and 1-to-1 WebRTC voice/video calls with CallKit (TURN credentials fetched from the backend).
 
-Planned / larger future work tracked in `ROADMAP.md`:
+**Testing:** 76 backend tests (`pytest`, spins up its own Redis + a dedicated Postgres DB via Alembic) plus an end-to-end API suite, and 27 iOS unit tests (crypto, markdown parser, chat cache) — all run in CI on every push, including an iOS build+test job on macOS runners.
 
-- Text formatting (Markdown + entities, spoilers) and stickers / GIFs
-- Chat archive and folders, link-preview unfurling
-- Stories
-- End-to-end encrypted "secret chats" (Signal-style X3DH + Double Ratchet)
-- iOS localization, iPad layout, accessibility, and universal links
+Remaining / future work tracked in `ROADMAP.md`:
+
+- Stickers / GIFs (needs a Tenor/Giphy API key and sticker-pack assets — deferred)
+- Double-Ratchet upgrade for secret chats (v1 is X25519 + HKDF + AES-GCM without per-message ratchet, single device)
+- Full localization coverage (infrastructure + 66 core strings are in; source ru, en translations), universal links
+- Live-infrastructure verification: real-device push/call testing, coturn/APNs/FCM deployments
 
 ## License
 

@@ -1,5 +1,10 @@
 # Siberia — iOS Frontend
 
+> **⚠️ Документ местами исторический.** Точечные исправления внесены
+> (Keychain, WS-auth, версии), но исчерпывающий источник правды — код и
+> тесты. Новые подсистемы (entities/markdown, папки и архив, stories,
+> секретные E2E-чаты, link preview) здесь не описаны — см. корневой README.
+
 Swift/SwiftUI мессенджер. Реализует чаты, друзей, каналы и real-time уведомления поверх FastAPI-бэкенда.
 
 ---
@@ -46,7 +51,7 @@ SiberiaApp (точка входа)
 | Многопоточность | async/await, Actor                           |
 | HTTP            | URLSession + кастомный `APIClient`           |
 | WebSocket       | URLSessionWebSocketTask (`RealtimeClient`)   |
-| Токены          | UserDefaults (`TokenStorage`)                |
+| Токены          | Keychain (`TokenStorage`, kSecAttrAccessibleAfterFirstUnlock) |
 | Device ID       | UUID, сохранённый в UserDefaults             |
 | Уведомления     | UserNotifications framework                  |
 
@@ -143,7 +148,7 @@ onDisappear
 - Профиль текущего пользователя: `GET /users/me`
 - Список активных сессий: `GET /sessions`
 - Завершить сессию: `DELETE /sessions/{id}`
-- Завершить все остальные сессии: `DELETE /sessions/all-other`
+- Завершить все остальные сессии: `POST /sessions/revoke_all`
 - Выход: `POST /auth/logout` → очистка токенов → `AppState.logout()` → AuthView
 
 ---
@@ -204,7 +209,7 @@ TokenStorage.shared.refreshToken // get/set
 TokenStorage.shared.clear()      // logout
 ```
 
-> Хранение в UserDefaults. Для production следует перенести в Keychain.
+> Хранение в Keychain (перенесено из UserDefaults).
 
 **`DeviceIDStorage.swift`** — стабильный UUID устройства.
 
@@ -319,8 +324,9 @@ Response: { "access_token": "...", "refresh_token": "...", "token_type": "bearer
 Токен передаётся через query-параметр:
 
 ```
-ws://192.168.1.134:8000/ws/me?token={accessToken}
-ws://192.168.1.134:8000/ws/{chatId}?token={accessToken}
+ws://<host>/ws/me            (Authorization: Bearer <accessToken>)
+ws://<host>/ws/{chatId}      (Authorization: Bearer <accessToken>)
+# ?token= работает только вне production
 ```
 
 ### 5.3 Ping/Pong
@@ -466,7 +472,7 @@ Body: {
 | Мой профиль                 | GET    | `/users/me`                 |
 | Список сессий               | GET    | `/sessions`                 |
 | Завершить сессию            | DELETE | `/sessions/{id}`            |
-| Завершить все другие        | DELETE | `/sessions/all-other`       |
+| Завершить все другие        | POST | `/sessions/revoke_all`       |
 
 ### Друзья
 
@@ -513,8 +519,8 @@ Body: {
 
 | Соединение           | URL                              |
 |----------------------|----------------------------------|
-| Глобальный фид       | `ws://.../ws/me?token={token}`   |
-| Чат-специфичный      | `ws://.../ws/{chatId}?token={token}` |
+| Глобальный фид       | `ws://.../ws/me` + Bearer-header   |
+| Чат-специфичный      | `ws://.../ws/{chatId}` + Bearer-header |
 
 ---
 
@@ -603,8 +609,8 @@ struct FriendRequestItem: Codable {
 
 ### 9.1 Требования
 
-- Xcode 15+
-- iOS 17+ (deployment target)
+- Xcode 26+
+- iOS 26 (deployment target)
 - Запущенный бэкенд (см. Backend/README.md)
 
 ### 9.2 Конфигурация адреса бэкенда
@@ -633,7 +639,7 @@ docker compose up -d
 
 ### 9.4 Сборка iOS-приложения
 
-1. Откройте `Siberia 2/Siberia.xcodeproj` в Xcode
+1. Откройте `frontend/Siberia.xcodeproj` в Xcode
 2. Выберите таргет `Siberia` и симулятор или устройство
 3. `Cmd+R` — сборка и запуск
 

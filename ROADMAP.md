@@ -219,39 +219,39 @@
 
 ---
 
-## SPRINT 4 — Большие фичи
+## SPRINT 4 — Большие фичи ✅ 5/6 DONE (2026-09-08; стикеры/GIF отложены)
 
 > Каждая — 1–2 месяца минимум.
 
-### Форматирование текста (Markdown + entities)
+### Форматирование текста (Markdown + entities) ✅ DONE 2026-09-07
 - [ ] **Backend**: новое поле `text_entities` (JSONB) в `messages` — массив `{type, offset, length}` с типами: `bold`, `italic`, `code`, `pre`, `strikethrough`, `spoiler`, `mention`, `url`, `phone`.
 - [ ] **Парсинг markdown** на стороне клиента или сервера. Telegram парсит **client-side**: пользователь пишет `**bold**`, клиент превращает в entities + чистый текст.
 - [ ] **iOS-рендер**: `AttributedString` с правильными стилями.
 - [ ] **Spoiler**: tap-to-reveal blur.
 
-### Стикеры и GIF
+### Стикеры и GIF — ⏭ отложено (нужны Tenor/Giphy-ключ и стикерпаки)
 - [ ] **Backend**: новый тип `sticker`, отдельный bucket. Стикерпаки как сущность.
 - [ ] **TGS/Lottie** (анимированные стикеры) — rlottie или Lottie-iOS.
 - [ ] **GIF**: Tenor/Giphy API + локальный кеш.
 - [ ] **iOS**: панель стикеров рядом с emoji, hot-keys на эмодзи → стикеры.
 
-### Архив и папки чатов
+### Архив и папки чатов ✅ DONE 2026-09-07
 - [ ] **Backend**: поле `archived_at` в `chat_members`. Эндпоинты `POST /chats/{id}/archive`, `DELETE /chats/{id}/archive`.
 - [ ] **Folders**: новая таблица `chat_folder` (user_id, name, filter rules), `chat_folder_chat` (M2M).
 - [ ] **iOS**: горизонтальный pager сверху в `ChatsView` — «Все», «Личные», «Группы», кастомные папки. Свайп влево на чате → архив.
 
-### Web preview / link unfurl
+### Web preview / link unfurl ✅ DONE 2026-09-07
 - [ ] **Backend**: при отправке сообщения с URL — async задача через ARQ, парсинг OG-tags, кеш в Redis. Возвращать в `MessageOut.link_preview`.
 - [ ] **iOS**: блок с превью под сообщением (image + title + description).
 
-### Голосовые и видеозвонки (только 1-на-1)
+### Голосовые и видеозвонки (только 1-на-1) — код готов, ждёт coturn-деплоя и живого теста
 > Детальное объяснение архитектуры в разделе «Звонки» ниже. ~4–5 недель на всё (P2P, без групповых).
 
-### Stories
+### Stories ✅ DONE 2026-09-08
 - [ ] **Backend**: новая таблица `stories` (user_id, media_id, created_at, expires_at). Endpoints upload/list/view/react.
 - [ ] **iOS**: горизонтальный круги-аватарки сверху `ChatsView`, fullscreen viewer с прогресс-баром.
 
-### E2E-шифрование (Secret Chats)
+### E2E-шифрование (Secret Chats) ✅ v1 DONE 2026-09-08 (X25519+HKDF+AES-GCM; без ratchet, одно устройство — см. миграцию 023)
 > Очень большая отдельная фича. Опционально — Telegram держит E2E как **отдельный тип чата**, не для всех. ~2–3 месяца.
 >
 > Кратко: X3DH key exchange (Signal protocol) + Double Ratchet, шифрование на устройстве, сервер видит только зашифрованные blob'ы. Теряются: серверный поиск, sync на новые устройства без передачи ключа, история через web. iOS — pinned ключи + verification fingerprint между парой.
@@ -400,6 +400,11 @@ iOS:
 ---
 
 ## PUSH-УВЕДОМЛЕНИЯ — что есть и чего не хватает
+
+> **Обновление 2026-09-08:** серверная часть закрыта — пуши на friend request/accept,
+> добавление в группу, VoIP для звонков; FCM переведён на v1 API; тихие пуши идут
+> с корректными заголовками; APNs держит одно HTTP/2-соединение. Осталось только
+> проверить доставку на реальном устройстве (симулятор APNs не получает).
 
 > Это отдельный большой раздел, потому что в текущем состоянии **push на телефон скорее всего не приходят**, и причин сразу несколько.
 

@@ -1,5 +1,11 @@
 # Siberia Backend — Документация API
 
+> **⚠️ Актуальность.** Базовые разделы точны; новые подсистемы, добавленные
+> в сентябре 2026, задокументированы кратко в разделе «Новые эндпоинты»
+> в конце файла: text entities, папки и архив, stories, E2E secret chats,
+> link preview, ICE/TURN, отложенные сообщения (scheduled_messages).
+> Полные контракты — в Swagger (`/docs`) и тестах `tests/`.
+
 **Стек:** FastAPI · PostgreSQL (asyncpg) · Redis (pub/sub + кеш) · S3-совместимое хранилище · WebSocket
 
 **Интерактивная документация (Swagger UI):** `http://<host>:<port>/docs`  
@@ -1394,7 +1400,7 @@
 
 ### Персональный канал `/ws/me`
 
-**URL:** `ws://<host>/ws/me?token=<access_token>`
+**URL:** `ws://<host>/ws/me` — auth через `Authorization: Bearer <access_token>`; `?token=` работает только вне production
 
 Принимает все события из всех чатов пользователя (для обновления списка чатов, бейджей). Только для чтения — исходящие сообщения игнорируются.
 
@@ -1404,7 +1410,7 @@
 
 ### Комната чата `/ws/{chat_id}`
 
-**URL:** `ws://<host>/ws/{chat_id}?token=<access_token>`
+**URL:** `ws://<host>/ws/{chat_id}` — auth через `Authorization: Bearer <access_token>`; `?token=` работает только вне production
 
 Если токен невалиден или пользователь не участник — закрытие `1008`.
 
@@ -1577,7 +1583,7 @@ arq worker.WorkerSettings
 | `APNS_TEAM_ID` | — | — | 10-символьный Team ID |
 | `APNS_BUNDLE_ID` | — | — | Bundle ID приложения |
 | `APNS_SANDBOX` | — | `true` | `true` = sandbox (TestFlight), `false` = production |
-| `FCM_SERVER_KEY` | — | — | Legacy Server Key (Firebase) |
+| `FCM_PROJECT_ID` / `FCM_CREDENTIALS_PATH` | — | — | FCM HTTP v1 (сервис-аккаунт); `FCM_SERVER_KEY` deprecated |
 | `S3_BUCKET` | — | — | Имя бакета |
 | `S3_ENDPOINT` | — | — | `""` = AWS, `https://<id>.r2.cloudflarestorage.com` = R2 |
 | `S3_KEY_ID` | — | — | Access Key ID |
@@ -1620,3 +1626,21 @@ ruff format .
 ReDoc: `http://localhost:8000/redoc`
 
 OpenAPI JSON: `http://localhost:8000/openapi.json`
+
+
+---
+
+## Новые эндпоинты (сентябрь 2026)
+
+| Область | Эндпоинты | Заметки |
+|---|---|---|
+| Text entities | `entities` в `POST/PATCH` сообщений и во всех выдачах | `{type, offset, length}`, offset в UTF-16 units; типы: bold/italic/underline/strikethrough/code/pre/spoiler |
+| Папки | `GET/POST /folders`, `PATCH/DELETE /folders/{id}`, `PUT /folders/{id}/chats` | PUT — полная замена состава; только свои чаты |
+| Архив | `POST/DELETE /chats/{id}/archive` | per-user; `is_archived` в `GET /chats` |
+| Отложенные | `send_at` в `POST /chats/{id}/messages`, `GET /chats/{id}/messages/scheduled`, `DELETE /messages/{id}/scheduled` | живут в `scheduled_messages`; настоящее сообщение создаётся при доставке (свежий id) |
+| Link preview | `link_preview` в сообщениях + WS-событие `link_preview` | OG-теги, ARQ-задача, SSRF-safe |
+| Stories | `POST /stories`, `GET /stories/feed`, `POST /stories/{id}/view`, `GET /stories/{id}/views`, `DELETE /stories/{id}` | 24 часа, видимость — друзья |
+| E2E | `PUT/GET /e2e/keys`, `POST /chats/secret` | сервер — транспорт: только публичные ключи, handshake и шифроблобы (`encrypted_payload`) |
+| ICE | `GET /calls/ice-servers` | STUN + эфемерные TURN-креды (HMAC, схема coturn use-auth-secret) |
+| Обогащение чатов | `unread_count`, `last_message`, `peer`, `is_archived`, `e2e_handshake` в `GET /chats` | батч-запросы, без N+1 |
+| Members | `last_read_message_id` в `GET /chats/{id}/members` | инициализация галочек прочтения |
