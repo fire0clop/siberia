@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi_limiter.depends import RateLimiter
-from pyrate_limiter import Duration, InMemoryBucket, Limiter, Rate
+from pyrate_limiter import Duration, Rate
+
+from utils.rate_limit import per_ip_limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
@@ -33,13 +35,19 @@ from services.auth import (
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-_strict_limiter = Limiter(InMemoryBucket([Rate(10, Duration.MINUTE)]))
-_refresh_limiter = Limiter(InMemoryBucket([Rate(60, Duration.MINUTE)]))
-_verify_limiter = Limiter(InMemoryBucket([Rate(10, Duration.MINUTE)]))
+# per_ip_limiter — отдельный бакет на каждый IP+route. Раньше сюда передавался
+# голый InMemoryBucket, и SingleBucketFactory игнорировал ключ: лимит был ОДИН
+# на всех клиентов сразу (10 логинов в минуту на весь инстанс).
+_strict_limiter = per_ip_limiter(Rate(10, Duration.MINUTE))
+_refresh_limiter = per_ip_limiter(Rate(60, Duration.MINUTE))
+_verify_limiter = per_ip_limiter(Rate(10, Duration.MINUTE))
+# TOTP: 6 цифр и valid_window=1 брутфорсятся без лимита за минуты
+_totp_limiter = per_ip_limiter(Rate(10, Duration.MINUTE))
 
 _limit_strict = [Depends(RateLimiter(limiter=_strict_limiter))]
 _limit_refresh = [Depends(RateLimiter(limiter=_refresh_limiter))]
 _limit_verify = [Depends(RateLimiter(limiter=_verify_limiter))]
+_limit_totp = [Depends(RateLimiter(limiter=_totp_limiter))]
 
 
 @router.post("/register", response_model=AuthResponse, dependencies=_limit_strict)
@@ -116,7 +124,7 @@ async def resend_verification(
 
 # ── 2FA ───────────────────────────────────────────────────────────────────────
 
-@router.post("/2fa/setup", response_model=TotpSetupResponse)
+@router.post("/2fa/setup", response_model=TotpSetupResponse, dependencies=_limit_totp)
 async def totp_setup(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -124,7 +132,7 @@ async def totp_setup(
     return await setup_totp(db, current["user"].id)
 
 
-@router.post("/2fa/confirm")
+@router.post("/2fa/confirm", dependencies=_limit_totp)
 async def totp_confirm(
     data: TotpConfirmRequest,
     current=Depends(get_current_user),
@@ -134,7 +142,7 @@ async def totp_confirm(
     return {"detail": "2FA enabled"}
 
 
-@router.post("/2fa/verify", response_model=AuthResponse)
+@router.post("/2fa/verify", response_model=AuthResponse, dependencies=_limit_totp)
 async def totp_verify(
     data: TotpVerifyRequest,
     request: Request,
@@ -142,14 +150,15 @@ async def totp_verify(
 ):
     device_id = request.headers.get("X-Device-ID")
     user_agent = request.headers.get("User-Agent")
+    ip = request.client.host if request.client else None
 
     access, refresh, user = await complete_2fa_login(
-        db, data.temp_token, data.totp_code, device_id, user_agent
+        db, data.temp_token, data.totp_code, device_id, user_agent, ip=ip
     )
     return AuthResponse(access_token=access, refresh_token=refresh, user=user)
 
 
-@router.delete("/2fa")
+@router.delete("/2fa", dependencies=_limit_totp)
 async def totp_disable(
     data: TotpConfirmRequest,
     current=Depends(get_current_user),

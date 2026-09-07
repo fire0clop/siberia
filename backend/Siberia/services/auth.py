@@ -114,6 +114,28 @@ async def _log_login(
     await db.flush()
 
 
+async def _record_successful_login(
+    db: AsyncSession,
+    user: User,
+    ip: str | None,
+    user_agent: str | None,
+) -> None:
+    """LoginEvent(success=True) + алерт о новом устройстве.
+
+    Вызывается только когда логин действительно состоялся: после пароля
+    для аккаунтов без 2FA, после верного TOTP — для аккаунтов с 2FA.
+    """
+    # Проверяем ДО записи события, чтобы свежий event не «обелил» IP
+    is_new_device = await _check_new_device(db, user, ip, user_agent)
+
+    await _log_login(db, user.id, ip, user_agent, success=True)
+    await db.commit()
+
+    if is_new_device and user.email_verified:
+        from services.email_service import send_new_device_alert
+        asyncio.create_task(send_new_device_alert(user.email, ip or "unknown", user_agent or ""))
+
+
 async def _check_new_device(
     db: AsyncSession,
     user: User,
@@ -149,6 +171,21 @@ async def _invalidate_session_on_token_reuse(db: AsyncSession, user_id: int) -> 
 
 
 # ── TOTP helpers (P8.2) ───────────────────────────────────────────────────────
+
+_TOTP_PENDING_PREFIX = "pending:"
+
+
+def _active_totp_secret(user: User) -> str | None:
+    """Подтверждённый TOTP-секрет, или None если 2FA выключена или setup не завершён.
+
+    Важно: незавершённый /2fa/setup оставляет "pending:<secret>" — раньше
+    login_user считал это включённой 2FA, а pyotp.TOTP("pending:...") падал
+    на base32-декоде → 500 на любой код и полный lockout аккаунта.
+    """
+    secret = user.totp_secret
+    if not secret or secret.startswith(_TOTP_PENDING_PREFIX):
+        return None
+    return secret
 
 def create_pre_auth_token(user_id: int, session_id: int) -> str:
     from datetime import timedelta
@@ -270,49 +307,15 @@ async def login_user(
         await db.commit()
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Check BEFORE logging so the new event doesn't pollute the history check
-    is_new_device = await _check_new_device(db, user, ip, user_agent)
-
-    await _log_login(db, user.id, ip, user_agent, success=True)
-    await db.commit()
-
-    if is_new_device and user.email_verified:
-        from services.email_service import send_new_device_alert
-        asyncio.create_task(send_new_device_alert(user.email, ip or "unknown", user_agent or ""))
-
-    # If 2FA is enabled, issue a short-lived pre-auth token instead
-    if user.totp_secret:
-        # Create session first so temp_token has a session_id
-        result = await db.execute(
-            select(Session)
-            .where(Session.user_id == user.id)
-            .order_by(asc(Session.created_at))
-            .with_for_update()
-        )
-        sessions = result.scalars().all()
-        evicted_id_2fa: int | None = None
-        if len(sessions) >= MAX_SESSIONS:
-            evicted_id_2fa = sessions[0].id
-            await db.delete(sessions[0])
-            await db.flush()
-
-        result = await db.execute(
-            select(Session).where(
-                Session.user_id == user.id,
-                Session.device_id == device_id,
-            )
-        )
-        session = result.scalars().first()
-        if not session:
-            session = Session(user_id=user.id, device_id=device_id, user_agent=user_agent)
-            db.add(session)
-            await db.flush()
-
-        await db.commit()
-        if evicted_id_2fa is not None and evicted_id_2fa != session.id:
-            await _revoke_sessions_in_redis([evicted_id_2fa])
-        temp = create_pre_auth_token(user.id, session.id)
+    # 2FA включена → короткоживущий pre-auth токен. Ничего больше:
+    # раньше здесь создавалась сессия (вытесняя чужое устройство),
+    # писался LoginEvent(success=True) и слался «новое устройство» —
+    # всё это ДО проверки TOTP, т.е. доступно знающему только пароль.
+    if _active_totp_secret(user):
+        temp = create_pre_auth_token(user.id, 0)
         return {"requires_2fa": True, "temp_token": temp}
+
+    await _record_successful_login(db, user, ip, user_agent)
 
     access, refresh = await create_tokens(db, user.id, device_id, user_agent, ip)
     return {"access_token": access, "refresh_token": refresh, "user": user}
@@ -324,6 +327,7 @@ async def complete_2fa_login(
     totp_code: str,
     device_id: str | None,
     user_agent: str | None,
+    ip: str | None = None,
 ) -> tuple[str, str, User]:
     try:
         payload = decode_token(temp_token)
@@ -337,13 +341,21 @@ async def complete_2fa_login(
     user = await db.get(User, user_id)
     if not user or user.deleted_at is not None:
         raise HTTPException(status_code=401, detail="User not found")
-    if not user.totp_secret:
+
+    secret = _active_totp_secret(user)
+    if not secret:
         raise HTTPException(status_code=400, detail="2FA is not enabled")
 
     import pyotp
-    totp = pyotp.TOTP(user.totp_secret)
+    totp = pyotp.TOTP(secret)
     if not totp.verify(totp_code, valid_window=1):
+        await _log_login(db, user.id, ip, user_agent, success=False)
+        await db.commit()
         raise HTTPException(status_code=401, detail="Invalid TOTP code")
+
+    # Логин состоялся только сейчас — событие и алерты пишем здесь,
+    # а не в login_user до проверки кода.
+    await _record_successful_login(db, user, ip, user_agent)
 
     access, refresh = await create_tokens(db, user.id, device_id, user_agent)
     return access, refresh, user
@@ -355,13 +367,20 @@ async def setup_totp(db: AsyncSession, user_id: int) -> dict:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Активный секрет не перезаписываем: это позволяло (в т.ч. атакующему
+    # с украденным access-токеном) заменить рабочую 2FA на pending-секрет
+    # и заблокировать владельцу вход. Сначала DELETE /auth/2fa с кодом.
+    if _active_totp_secret(user):
+        raise HTTPException(status_code=400, detail="2FA is already enabled — disable it first")
+
     secret = pyotp.random_base32()
     totp = pyotp.TOTP(secret)
     app_name = "Siberia"
     qr_url = totp.provisioning_uri(name=user.email, issuer_name=app_name)
 
     # Store secret but don't activate 2FA until confirmed
-    user.totp_secret = f"pending:{secret}"
+    # (повторный setup поверх незавершённого pending — ок, это ретрай)
+    user.totp_secret = f"{_TOTP_PENDING_PREFIX}{secret}"
     await db.commit()
 
     return {"secret": secret, "qr_url": qr_url}
@@ -388,15 +407,22 @@ async def confirm_totp(db: AsyncSession, user_id: int, totp_code: str) -> None:
 async def disable_totp(db: AsyncSession, user_id: int, totp_code: str) -> None:
     import pyotp
     user = await db.get(User, user_id)
-    if not user or not user.totp_secret or user.totp_secret.startswith("pending:"):
+    secret = _active_totp_secret(user) if user else None
+    if not secret:
         raise HTTPException(status_code=400, detail="2FA is not enabled")
 
-    totp = pyotp.TOTP(user.totp_secret)
+    totp = pyotp.TOTP(secret)
     if not totp.verify(totp_code, valid_window=1):
         raise HTTPException(status_code=401, detail="Invalid TOTP code")
 
     user.totp_secret = None
     await db.commit()
+
+
+# Окно, в котором предыдущий refresh-токен ещё принимается как «опоздавший
+# участник легитимной гонки», а не как кража. Достаточно покрыть параллельные
+# запросы одного клиента; слишком большое окно ослабляет reuse-детект.
+REFRESH_ROTATION_GRACE_SECONDS = 30
 
 
 async def refresh_tokens(db: AsyncSession, refresh_token: str, device_id: str | None) -> tuple[str, str]:
@@ -409,34 +435,50 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str, device_id: str | 
         raise HTTPException(status_code=401, detail="Invalid token type")
 
     session_id = payload.get("session_id")
-    result = await db.execute(select(Session).where(Session.id == session_id))
+    # FOR UPDATE: без лока два параллельных refresh с одним токеном оба
+    # проходили проверку равенства, и проигравший позже триггерил
+    # reuse-детект — удалялись все сессии пользователя.
+    result = await db.execute(
+        select(Session).where(Session.id == session_id).with_for_update()
+    )
     session = result.scalars().first()
 
     if not session:
         raise HTTPException(status_code=401, detail="Session not found")
 
-    # P8.3: strict rotation — if token doesn't match, token was already rotated → nuke all sessions
-    if session.refresh_token != refresh_token:
-        await _invalidate_session_on_token_reuse(db, session.user_id)
-        raise HTTPException(status_code=401, detail="Refresh token already used — all sessions revoked")
-
     if device_id and session.device_id != device_id:
         raise HTTPException(status_code=401, detail="Invalid device")
 
     user_id = session.user_id
+    now = datetime.now(timezone.utc)
 
-    # P8.3: Clear old token BEFORE issuing new one
-    session.refresh_token = None
-    await db.flush()
+    if session.refresh_token == refresh_token:
+        # Обычная строгая ротация (P8.3)
+        new_access = create_access_token(user_id, session.id)
+        new_refresh = create_refresh_token(user_id, session.id)
 
-    new_access = create_access_token(user_id, session.id)
-    new_refresh = create_refresh_token(user_id, session.id)
+        session.prev_refresh_token = refresh_token
+        session.rotated_at = now
+        session.refresh_token = new_refresh
+        session.last_active = now
+        await db.commit()
+        return new_access, new_refresh
 
-    session.refresh_token = new_refresh
-    session.last_active = datetime.now(timezone.utc)
-    await db.commit()
+    if (
+        session.prev_refresh_token is not None
+        and session.prev_refresh_token == refresh_token
+        and session.rotated_at is not None
+        and (now - session.rotated_at).total_seconds() < REFRESH_ROTATION_GRACE_SECONDS
+    ):
+        # Grace: проигравший недавнюю гонку клиент получает свежий access
+        # и ТЕКУЩИЙ refresh — обе стороны сходятся на одном токене.
+        new_access = create_access_token(user_id, session.id)
+        await db.commit()  # снять лок
+        return new_access, session.refresh_token
 
-    return new_access, new_refresh
+    # Настоящий reuse (или очень старый токен) — отзываем всё
+    await _invalidate_session_on_token_reuse(db, user_id)
+    raise HTTPException(status_code=401, detail="Refresh token already used — all sessions revoked")
 
 
 async def logout_user(db: AsyncSession, refresh_token: str) -> None:

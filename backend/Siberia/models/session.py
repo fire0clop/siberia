@@ -20,6 +20,10 @@ class Session(Base):
 
     device_id = Column(String, index=True)
     refresh_token = Column(String, unique=True, index=True)
+    # Предыдущий refresh-токен + момент ротации: короткое grace-окно, в котором
+    # опоздавший участник легитимной гонки двух refresh не считается вором.
+    prev_refresh_token = Column(String, nullable=True)
+    rotated_at = Column(DateTime(timezone=True), nullable=True)
 
     user_agent = Column(String, nullable=True)
 
