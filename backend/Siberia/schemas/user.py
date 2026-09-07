@@ -33,7 +33,9 @@ class UserOut(BaseModel):
 
     id: int
     public_id: str
-    email: EmailStr
+    # Only present when the viewer requests their own profile — never exposed
+    # to other users (privacy: email enumeration via /users/{id} was possible).
+    email: Optional[EmailStr] = None
     nickname: str
     username: Optional[str] = None
     bio: Optional[str] = None

@@ -112,7 +112,8 @@ async def build_user_out(
     result = {
         "id": target.id,
         "public_id": target.public_id,
-        "email": target.email,
+        # Email is private: only the owner sees it.
+        "email": target.email if is_self else None,
         "nickname": target.nickname,
         "username": target.username,
         "bio": target.bio,

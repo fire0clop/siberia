@@ -47,10 +47,10 @@ def _serialize_call(call: Call) -> dict:
 
 
 def _serialize_user_short(u: User) -> dict:
+    # No email here: this payload goes to the *other* party of the call.
     return {
         "id": u.id,
         "nickname": u.nickname,
-        "email": u.email,
         "avatar_url": getattr(u, "avatar_url", None),
         "bio": getattr(u, "bio", None),
         "email_verified": getattr(u, "email_verified", False),

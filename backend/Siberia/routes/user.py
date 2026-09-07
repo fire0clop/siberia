@@ -228,8 +228,14 @@ async def get_blocked(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    users = await get_blocked_users(db, current["user"].id)
-    return [UserOut.model_validate(u) for u in users]
+    viewer_id = current["user"].id
+    users = await get_blocked_users(db, viewer_id)
+    # build_user_out applies privacy filtering (no raw ORM → UserOut: it leaked email)
+    result = []
+    for u in users:
+        data = await build_user_out(db, u, viewer_id=viewer_id)
+        result.append(UserOut(**data))
+    return result
 
 
 @router.post("/{user_id}/block", status_code=200)

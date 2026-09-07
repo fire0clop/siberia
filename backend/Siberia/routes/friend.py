@@ -60,11 +60,13 @@ async def outgoing_requests(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = await get_outgoing_friend_requests(db, current["user"].id)
-    return [
-        FriendRequestOut(request_id=friend_row.id, user=addressee)
-        for friend_row, addressee in rows
-    ]
+    viewer_id = current["user"].id
+    rows = await get_outgoing_friend_requests(db, viewer_id)
+    result = []
+    for friend_row, addressee in rows:
+        data = await build_user_out(db, addressee, viewer_id=viewer_id)
+        result.append(FriendRequestOut(request_id=friend_row.id, user=UserOut(**data)))
+    return result
 
 
 @router.get("/requests", response_model=list[FriendRequestOut])
@@ -72,11 +74,13 @@ async def incoming_requests(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = await get_incoming_friend_requests(db, current["user"].id)
-    return [
-        FriendRequestOut(request_id=friend_row.id, user=requester)
-        for friend_row, requester in rows
-    ]
+    viewer_id = current["user"].id
+    rows = await get_incoming_friend_requests(db, viewer_id)
+    result = []
+    for friend_row, requester in rows:
+        data = await build_user_out(db, requester, viewer_id=viewer_id)
+        result.append(FriendRequestOut(request_id=friend_row.id, user=UserOut(**data)))
+    return result
 
 
 @router.get("", response_model=list[UserOut])

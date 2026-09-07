@@ -151,6 +151,23 @@ async def create_message(
     if _member and _member.role == _MemberRole.subscriber:
         raise HTTPException(status_code=403, detail="Subscribers cannot post in channels")
 
+    # Private chats: blocking must also stop messages in an *existing* DM,
+    # not only prevent creating a new one (block check used to live solely
+    # in _check_can_message, which runs only on chat creation).
+    from models.chat import ChatType as _ChatType
+    from services.block_service import check_not_blocked
+    _chat_row = await db.get(Chat, chat_id)
+    if _chat_row is not None and _chat_row.type == _ChatType.private:
+        _other = await db.execute(
+            select(_ChatMember.user_id).where(
+                _ChatMember.chat_id == chat_id,
+                _ChatMember.user_id != user_id,
+            )
+        )
+        _other_id = _other.scalars().first()
+        if _other_id is not None:
+            await check_not_blocked(db, user_id, _other_id)
+
     await _validate_reply_in_chat(db, chat_id, reply_to_message_id)
 
     forwarded_from_message_id = None

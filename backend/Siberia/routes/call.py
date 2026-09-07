@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_db
 from utils.deps import get_current_user
 from schemas.call import CallInitiate, CallOut, CallWithPeers
+from schemas.user import UserOut
+from services.user_service import build_user_out
 from services.call_service import (
     initiate_call,
     accept_call,
@@ -74,4 +76,19 @@ async def history(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_history(db, current["user"].id, limit=min(limit, 200))
+    viewer_id = current["user"].id
+    calls = await list_history(db, viewer_id, limit=min(max(limit, 1), 200))
+    # Build peers via build_user_out so privacy filtering applies
+    # (raw ORM → UserOut leaked email and last_seen_at).
+    result = []
+    for c in calls:
+        caller = UserOut(**await build_user_out(db, c.caller, viewer_id=viewer_id))
+        callee = UserOut(**await build_user_out(db, c.callee, viewer_id=viewer_id))
+        result.append(
+            CallWithPeers(
+                **CallOut.model_validate(c).model_dump(),
+                caller=caller,
+                callee=callee,
+            )
+        )
+    return result

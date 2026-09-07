@@ -15,8 +15,16 @@ from utils.redis import publish
 
 
 async def lock_chat_row(db: AsyncSession, chat_id: int) -> Chat:
+    # populate_existing is load-bearing: if this Chat was already loaded into
+    # the session earlier in the request, the identity map would return the
+    # stale object without refreshing sync_seq after the FOR UPDATE lock is
+    # acquired — concurrent senders then computed stale_seq+1 and hit the
+    # uq_chat_update_seq unique violation (500).
     result = await db.execute(
-        select(Chat).where(Chat.id == chat_id).with_for_update()
+        select(Chat)
+        .where(Chat.id == chat_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one()
 
