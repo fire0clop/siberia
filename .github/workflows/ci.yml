@@ -138,10 +138,45 @@ jobs:
       - name: Run pytest
         run: pytest -q
 
+  ios:
+    name: iOS build + tests
+    runs-on: macos-26
+    needs: lint
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -E '^\s+iPhone' | head -1 | sed -E 's/^\s+([^(]+) \(.*/\1/' | xargs)
+          if [ -z "$DEVICE" ]; then echo "No iPhone simulator available"; xcrun simctl list devices; exit 1; fi
+          echo "Picked: $DEVICE"
+          echo "device=$DEVICE" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project Siberia.xcodeproj \
+            -scheme Siberia \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -100
+
   deploy:
     name: Deploy to production
     runs-on: ubuntu-latest
-    needs: [e2e, pytest]
+    needs: [e2e, pytest, ios]
     # Деплой только вручную (Actions → CI → Run workflow), пока не настроены
     # secrets: DOCKER_USERNAME, DOCKER_PASSWORD, DEPLOY_HOST, DEPLOY_USER, DEPLOY_KEY.
     if: github.event_name == 'workflow_dispatch'

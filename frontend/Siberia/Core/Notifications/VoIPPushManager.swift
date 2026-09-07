@@ -15,7 +15,24 @@ final class VoIPPushManager: NSObject {
 	static let shared = VoIPPushManager()
 	private let registry = PKPushRegistry(queue: .main)
 
+	/// Последний полученный VoIP-токен. PushKit отдаёт его один раз на старте;
+	/// если пользователь тогда не был залогинен, регистрация падала 401 и
+	/// до холодного перезапуска звонки не приходили. Теперь AppState после
+	/// логина дожимает регистрацию из кеша.
+	private(set) var cachedToken: String?
+
 	private override init() { super.init() }
+
+	/// Повторная регистрация закешированного токена (после логина).
+	func registerCachedTokenIfAny() async {
+		guard let token = cachedToken else { return }
+		do {
+			try await PushTokenService.shared.register(token: token, kind: .voip)
+			Log.push.info("VoIP token (cached) registered on backend")
+		} catch {
+			Log.push.error("VoIP cached token register failed: \(String(describing: error))")
+		}
+	}
 
 	/// Вызывается ОДИН раз в AppDelegate.didFinishLaunchingWithOptions.
 	/// PushKit очень требователен — desiredPushTypes должны быть выставлены
@@ -37,6 +54,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
 	) {
 		guard type == .voIP else { return }
 		let token = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
+		cachedToken = token
 		Log.push.info("VoIP token received (length=\(token.count))")
 		Task {
 			do {

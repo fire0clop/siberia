@@ -99,6 +99,7 @@ struct ComposeBarView: View {
 					.animation(.spring(response: 0.2), value: showAttachMenu)
 			}
 			.disabled(vm.isUploadingMedia)
+			.accessibilityLabel(showAttachMenu ? "Закрыть меню вложений" : "Прикрепить файл")
 		}
 	}
 
@@ -212,6 +213,7 @@ struct ComposeBarView: View {
 					Task { await vm.send() }
 					UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 				} label: { sendCircle }
+				.accessibilityLabel("Отправить")
 				.simultaneousGesture(
 					LongPressGesture(minimumDuration: 0.5).onEnded { _ in
 						// Отложенная отправка в секретных чатах запрещена (v1)

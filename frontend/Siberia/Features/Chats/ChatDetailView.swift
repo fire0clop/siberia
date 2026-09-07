@@ -358,7 +358,7 @@ struct ChatDetailView: View {
 			// канал тоже не группа, но звонить его подписчику нельзя)
 			if vm.isDirectChat, let partner = vm.otherMember?.user {
 				Button {
-					print("📞 [TAP] audio call button pressed for peer=\(partner.id)")
+					Log.calls.info("audio call tap peer=\(partner.id)")
 					Task { await appState.startOutgoingCall(peer: partner, type: .audio) }
 				} label: {
 					Image(systemName: "phone.fill")
@@ -367,8 +367,9 @@ struct ChatDetailView: View {
 						.frame(width: 36, height: 36)
 						.background(Circle().fill(Self.accent.opacity(0.09)))
 				}
+				.accessibilityLabel("Аудиозвонок")
 				Button {
-					print("📞 [TAP] video call button pressed for peer=\(partner.id)")
+					Log.calls.info("video call tap peer=\(partner.id)")
 					Task { await appState.startOutgoingCall(peer: partner, type: .video) }
 				} label: {
 					Image(systemName: "video.fill")
@@ -377,6 +378,7 @@ struct ChatDetailView: View {
 						.frame(width: 36, height: 36)
 						.background(Circle().fill(Self.accent.opacity(0.09)))
 				}
+				.accessibilityLabel("Видеозвонок")
 			}
 
 			Menu {

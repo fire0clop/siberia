@@ -165,6 +165,7 @@ struct StoryViewerView: View {
 					.foregroundStyle(.white)
 					.frame(width: 36, height: 36)
 			}
+			.accessibilityLabel("Закрыть")
 		}
 		.padding(.horizontal, 12)
 	}

@@ -47,6 +47,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 		_ application: UIApplication,
 		didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
 	) -> Bool {
+		// Крашрепортер: только NSException-хендлер (см. setupSafe); лог прошлой
+		// сессии — в системный лог, чтобы краши не пропадали бесследно
+		CrashReporter.setupSafe()
+		if let crash = CrashReporter.consumePreviousCrashLog() {
+			Log.app.error("Previous session crashed:\n\(crash)")
+		}
 		// CallKit-провайдер должен быть инициализирован ДО первого VoIP-пуша
 		_ = CallKitManager.shared
 		// PushKit-реестр должен подняться сразу, иначе ранние пуши потеряются

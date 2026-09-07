@@ -72,6 +72,7 @@ struct StoriesRowView: View {
 					.overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
 				}
 				.disabled(isUploading)
+				.accessibilityLabel("Опубликовать историю")
 			}
 			Text("Моя").font(.caption2).foregroundStyle(.secondary)
 		}

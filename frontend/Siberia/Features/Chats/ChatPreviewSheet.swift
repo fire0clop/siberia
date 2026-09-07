@@ -90,8 +90,7 @@ struct ChatPeekOverlay: View {
 			Divider()
 			openButton
 		}
-		.frame(width: UIScreen.main.bounds.width * 0.88,
-		       height: UIScreen.main.bounds.height * 0.58)
+		.frame(maxWidth: 420, maxHeight: 560)  // без UIScreen.main: корректно в split view/iPad
 		.background(.regularMaterial)
 		.clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
 		.shadow(color: .black.opacity(0.3), radius: 32, y: 12)

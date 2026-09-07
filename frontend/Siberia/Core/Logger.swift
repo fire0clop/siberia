@@ -36,6 +36,7 @@ nonisolated struct LogCategory {
 }
 
 nonisolated enum Log {
+	static let app      = LogCategory("app")
 	static let auth     = LogCategory("auth")
 	static let network  = LogCategory("network")
 	static let realtime = LogCategory("realtime")

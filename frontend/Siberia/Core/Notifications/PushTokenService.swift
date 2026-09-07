@@ -12,6 +12,9 @@ final class PushTokenService {
 		case voip
 	}
 
+	/// Последние зарегистрированные токены (для отвязки при logout)
+	private var lastTokens: [Kind: String] = [:]
+
 	func register(token: String, kind: Kind) async throws {
 		let body = try JSONEncoder().encode(PushTokenBody(
 			device_token: token,
@@ -23,6 +26,7 @@ final class PushTokenService {
 			method: "POST",
 			body: body
 		)
+		lastTokens[kind] = token
 	}
 
 	func unregister(token: String) async {
@@ -32,6 +36,15 @@ final class PushTokenService {
 			method: "DELETE",
 			body: body
 		)
+	}
+
+	/// Отвязывает все токены устройства от аккаунта (вызывается при logout —
+	/// иначе пуши старого пользователя продолжали приходить на устройство).
+	func unregister() async throws {
+		for (_, token) in lastTokens {
+			await unregister(token: token)
+		}
+		lastTokens.removeAll()
 	}
 
 	private struct PushTokenBody: Encodable {

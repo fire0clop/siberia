@@ -152,9 +152,10 @@
 				};
 			};
 			buildConfigurationList = 2AC97E8D2F786BE200E3E702 /* Build configuration list for PBXProject "Siberia" */;
-			developmentRegion = en;
+			developmentRegion = ru;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				ru,
 				en,
 				Base,
 			);

@@ -20,6 +20,13 @@ enum CrashReporter {
 		installSignalHandlers()
 	}
 
+	/// Безопасный вариант: только NSException-хендлер. Сигнальные обработчики
+	/// НЕ ставим — они используют Foundation/файловый I/O и не являются
+	/// async-signal-safe (могли бы намертво зависнуть внутри краша).
+	static func setupSafe() {
+		installExceptionHandler()
+	}
+
 	// MARK: Read & clear on next launch
 
 	/// Returns the crash log from the previous session (if any) and deletes it.

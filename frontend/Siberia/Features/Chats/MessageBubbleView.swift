@@ -11,6 +11,8 @@ struct MessageBubbleView: View {
 	let onOpenGallery: (Int) -> Void     // open fullscreen gallery at index
 	let onSetHistoryId: (Int) -> Void    // show edit history sheet
 
+	@Environment(\.horizontalSizeClass) private var hSizeClass
+
 	private static let timeFmt: DateFormatter = {
 		let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
 	}()
@@ -79,7 +81,9 @@ struct MessageBubbleView: View {
 			.padding(.top, quoted != nil ? 4 : 8)
 			.padding(.bottom, 6)
 		}
-		.frame(maxWidth: UIScreen.main.bounds.width * 0.72)
+		// Потолок ширины без UIScreen.main (ломался в split view/iPad):
+		// compact ≈ прежние 72% iPhone, regular — шире для iPad
+		.frame(maxWidth: hSizeClass == .regular ? 460 : 300)
 		.fixedSize(horizontal: true, vertical: false)
 		.background(mine ? AnyShapeStyle(ChatDetailView.mineGrad) : AnyShapeStyle(ChatDetailView.otherBg))
 		.clipShape(tailShape(mine: mine))

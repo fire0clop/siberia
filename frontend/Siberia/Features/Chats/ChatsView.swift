@@ -142,6 +142,7 @@ struct ChatsView: View {
 						Image(systemName: "magnifyingglass")
 							.font(.system(size: 16, weight: .semibold))
 					}
+					.accessibilityLabel("Глобальный поиск")
 				}
 				ToolbarItem(placement: .topBarTrailing) {
 					Menu {
@@ -159,6 +160,7 @@ struct ChatsView: View {
 						Image(systemName: "square.and.pencil")
 							.font(.system(size: 17, weight: .semibold))
 					}
+					.accessibilityLabel("Новый чат")
 				}
 			}
 			.navigationDestination(for: ChatRoute.self) { ChatDetailView(route: $0) }

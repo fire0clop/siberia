@@ -73,6 +73,9 @@ final class AppState: ObservableObject {
 		await MessageNotifications.requestAuthorizationIfNeeded()
 		// E2E: публикуем identity-ключ устройства (идемпотентно)
 		await E2ECrypto.shared.publishKeyIfNeeded()
+		// VoIP-токен мог прийти до логина и не зарегистрироваться (401) —
+		// дожимаем из кеша, иначе входящие звонки не разбудят телефон
+		await VoIPPushManager.shared.registerCachedTokenIfAny()
 	}
 
 	func reconnectMeSocket() async {
@@ -356,9 +359,9 @@ final class AppState: ObservableObject {
 	// MARK: – Calls — initiation / control (вызывается из UI)
 
 	func startOutgoingCall(peer: User, type: CallType) async {
-		print("📞 startOutgoingCall: peer=\(peer.id) (\(peer.nickname)) type=\(type.rawValue)")
+		Log.calls.info("startOutgoingCall: peer=\(peer.id) type=\(type.rawValue)")
 		guard activeCall == nil, incomingCall == nil else {
-			print("📞 GUARD failed: activeCall=\(activeCall?.id ?? -1) incomingCall=\(incomingCall?.call.id ?? -1)")
+			Log.calls.info("startOutgoingCall blocked: already in a call")
 			return
 		}
 		do {
@@ -448,6 +451,9 @@ final class AppState: ObservableObject {
 	}
 
 	func logout() async {
+		// Отвязываем push-токены от аккаунта ДО убийства сессии —
+		// иначе пуши старого пользователя продолжали приходить на устройство
+		try? await PushTokenService.shared.unregister()
 		try? await AuthService.shared.logout()
 		await teardownLocalSession()
 	}
