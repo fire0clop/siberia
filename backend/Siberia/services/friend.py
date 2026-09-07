@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import or_, and_
@@ -45,6 +47,18 @@ async def send_request(db: AsyncSession, requester_id: int, addressee_id: int):
     db.add(friend)
     await db.commit()
     await db.refresh(friend)
+
+    # Пуш адресату — раньше о заявке узнавали только открыв приложение
+    requester = await db.get(User, requester_id)
+    if requester is not None:
+        from services.push_dispatcher import dispatch_simple_alert
+        asyncio.create_task(dispatch_simple_alert(
+            addressee_id,
+            "Заявка в друзья",
+            f"{requester.nickname} хочет добавить вас в друзья",
+            {"type": "friend_request", "user_id": requester_id},
+        ))
+
     return friend
 
 
@@ -60,6 +74,18 @@ async def accept_request(db: AsyncSession, user_id: int, request_id: int):
     friend.status = FriendStatus.accepted
     await db.commit()
     await db.refresh(friend)
+
+    # Пуш инициатору: заявку приняли
+    accepter = await db.get(User, user_id)
+    if accepter is not None:
+        from services.push_dispatcher import dispatch_simple_alert
+        asyncio.create_task(dispatch_simple_alert(
+            friend.requester_id,
+            "Заявка принята",
+            f"{accepter.nickname} принял(а) вашу заявку в друзья",
+            {"type": "friend_accepted", "user_id": user_id},
+        ))
+
     return friend
 
 

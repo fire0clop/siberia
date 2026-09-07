@@ -121,6 +121,7 @@ async def add_members(
 
     now = datetime.now(timezone.utc)
     added_names = []
+    added_ids: list[int] = []
     for uid in user_ids:
         existing = await db.execute(
             select(ChatMember).where(ChatMember.chat_id == chat_id, ChatMember.user_id == uid)
@@ -132,6 +133,7 @@ async def add_members(
             continue
         db.add(ChatMember(chat_id=chat_id, user_id=uid, role=MemberRole.member, joined_at=now))
         added_names.append(u.nickname)
+        added_ids.append(uid)
 
     if not added_names:
         await db.commit()
@@ -152,6 +154,20 @@ async def add_members(
                          {"added_user_ids": user_ids, "actor_id": actor_id})
     await broadcast_envelope(chat_id, env)
 
+    # Пуш каждому добавленному — раньше о включении в группу не узнавали
+    actor = await db.get(User, actor_id)
+    actor_name = actor.nickname if actor else "Кто-то"
+    group_title = locked_chat.title or "группу"
+    from services.push_dispatcher import dispatch_simple_alert
+    import asyncio as _asyncio
+    for uid in added_ids:
+        _asyncio.create_task(dispatch_simple_alert(
+            uid,
+            "Новая группа",
+            f"{actor_name} добавил(а) вас в «{group_title}»",
+            {"type": "group_add", "chat_id": chat_id},
+        ))
+
 
 async def remove_member(
     db: AsyncSession, chat_id: int, actor_id: int, target_user_id: int
@@ -171,6 +187,9 @@ async def remove_member(
     await db.flush()
 
     locked_chat = await lock_chat_row(db, chat_id)
+    if locked_chat.type == ChatType.channel:
+        # Кик подписчика раньше не уменьшал subscribers_count
+        locked_chat.subscribers_count = func.greatest(Chat.subscribers_count - 1, 0)
     msg = await _create_system_message(db, locked_chat, f"{target_name} was removed from the group")
 
     seq, _ = await log_update_on_locked_chat(
@@ -258,6 +277,22 @@ async def change_member_role(
 ) -> None:
     actor_member = await _require_role(db, chat_id, actor_id, MemberRole.owner)
     target_member = await _get_member(db, chat_id, target_user_id)
+
+    # Роли зависят от типа чата: в канале участник — subscriber (без права
+    # постить), «member» там не существует; в группе наоборот. Раньше owner
+    # канала мог случайно раздать subscriber'у роль member = право постить,
+    # а понизить обратно в subscriber было нельзя.
+    chat_obj = await db.get(Chat, chat_id)
+    if chat_obj is not None:
+        if chat_obj.type == ChatType.channel:
+            allowed = {MemberRole.owner, MemberRole.admin, MemberRole.subscriber}
+        else:
+            allowed = {MemberRole.owner, MemberRole.admin, MemberRole.member}
+        if new_role not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Role '{new_role.value}' is not valid for this chat type",
+            )
 
     if new_role == MemberRole.owner:
         # Transfer ownership: demote current owner to admin

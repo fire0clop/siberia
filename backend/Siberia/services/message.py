@@ -150,16 +150,19 @@ async def _resolve_mentions(db: AsyncSession, text: str | None, chat_id: int) ->
     import re
     from models.user import User
     from models.chat_member import ChatMember
-    nicks = re.findall(r"@(\w{3,32})", text)
-    if not nicks:
+    handles = re.findall(r"@(\w{3,32})", text)
+    if not handles:
         return []
     from sqlalchemy import func as sqlfunc
+    # @handle — это User.username (уникальный, [a-zA-Z0-9_]); раньше матчился
+    # nickname (произвольная строка с пробелами) — упоминания не работали.
     result = await db.execute(
         select(User.id)
         .join(ChatMember, ChatMember.user_id == User.id)
         .where(
             ChatMember.chat_id == chat_id,
-            sqlfunc.lower(User.nickname).in_([n.lower() for n in nicks]),
+            User.username.isnot(None),
+            sqlfunc.lower(User.username).in_([h.lower() for h in handles]),
         )
     )
     return [row[0] for row in result.all()]

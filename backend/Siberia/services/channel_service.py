@@ -79,7 +79,7 @@ async def subscribe_channel(db: AsyncSession, channel_id: int, user_id: int) -> 
         role=MemberRole.subscriber,
         joined_at=datetime.now(timezone.utc),
     ))
-    chat.subscribers_count = (chat.subscribers_count or 0) + 1
+    chat.subscribers_count = Chat.subscribers_count + 1  # атомарно, не read-modify-write
     await db.flush()
 
     locked_chat = await lock_chat_row(db, channel_id)
@@ -112,7 +112,7 @@ async def subscribe_by_invite(db: AsyncSession, slug: str, user_id: int) -> Chat
         role=MemberRole.subscriber,
         joined_at=datetime.now(timezone.utc),
     ))
-    chat.subscribers_count = (chat.subscribers_count or 0) + 1
+    chat.subscribers_count = Chat.subscribers_count + 1  # атомарно, не read-modify-write
     await db.commit()
     await db.refresh(chat)
     return chat
@@ -129,8 +129,8 @@ async def unsubscribe_channel(db: AsyncSession, channel_id: int, user_id: int) -
         raise HTTPException(status_code=400, detail="Owner cannot unsubscribe. Transfer ownership first.")
 
     await db.delete(member)
-    if chat.subscribers_count and chat.subscribers_count > 0:
-        chat.subscribers_count -= 1
+    from sqlalchemy import func as _func
+    chat.subscribers_count = _func.greatest(Chat.subscribers_count - 1, 0)
     await db.flush()
 
     locked_chat = await lock_chat_row(db, channel_id)

@@ -141,14 +141,14 @@ async def badge(
     db: AsyncSession = Depends(get_db),
 ):
     user = current["user"]
+    from sqlalchemy import func as _func
     result = await db.execute(
-        select(MessageStatus).where(
+        select(_func.count()).select_from(MessageStatus).where(
             MessageStatus.user_id == user.id,
             MessageStatus.status != MessageStatusEnum.read,
         )
     )
-    count = len(result.scalars().all())
-    return {"unread": count}
+    return {"unread": int(result.scalar() or 0)}
 
 
 @router.get("/me/privacy", response_model=PrivacySettingOut)

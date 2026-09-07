@@ -52,19 +52,71 @@ async def _is_muted(db, user_id: int, chat_id: int) -> bool:
 
 async def _get_badge(db, user_id: int) -> int:
     """Суммарное число непрочитанных сообщений для пользователя."""
+    from sqlalchemy import func as _func
     result = await db.execute(
-        select(MessageStatus).where(
+        select(_func.count()).select_from(MessageStatus).where(
             MessageStatus.user_id == user_id,
             MessageStatus.status != MessageStatusEnum.read,
         )
     )
-    return len(result.scalars().all())
+    return int(result.scalar() or 0)
 
 
 async def _remove_invalid_token(token_id: int) -> None:
     async with async_session_maker() as db:
         await db.execute(sa_delete(PushToken).where(PushToken.id == token_id))
         await db.commit()
+
+
+async def dispatch_simple_alert(
+    user_id: int,
+    title: str,
+    body: str,
+    data: dict | None = None,
+) -> None:
+    """Одиночный alert-пуш вне контекста сообщения: заявка в друзья,
+    добавление в группу и т.п. Fire-and-forget, своя DB-сессия.
+
+    Раньше такие события пушей не отправляли вовсе — пользователь узнавал
+    о заявке в друзья, только открыв приложение.
+    """
+    try:
+        async with async_session_maker() as db:
+            badge = await _get_badge(db, user_id)
+            result = await db.execute(
+                select(PushToken).where(
+                    PushToken.user_id == user_id,
+                    PushToken.kind != PushTokenKind.voip,
+                )
+            )
+            tokens = result.scalars().all()
+            if not tokens:
+                return
+
+            extra = {k: v for k, v in (data or {}).items() if v is not None}
+            apns_payload = {
+                "aps": {
+                    "alert": {"title": title, "body": body},
+                    "badge": badge,
+                    "sound": "default",
+                },
+                **extra,
+            }
+            fcm_data = {str(k): str(v) for k, v in extra.items()}
+
+            invalid_ids: list[int] = []
+            for token in tokens:
+                if token.platform == PushPlatform.ios:
+                    valid = await push_apns.send(token.device_token, apns_payload)
+                else:
+                    valid = await push_fcm.send(token.device_token, title, body, fcm_data)
+                if not valid:
+                    invalid_ids.append(token.id)
+
+            for tid in invalid_ids:
+                asyncio.create_task(_remove_invalid_token(tid))
+    except Exception:
+        logger.exception("dispatch_simple_alert error user=%d", user_id)
 
 
 async def dispatch_push_for_message(

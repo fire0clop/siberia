@@ -313,7 +313,21 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
         try:
             async for msg in pubsub.listen():
                 if msg["type"] == "message":
-                    await websocket.send_text(msg["data"])
+                    raw_evt = msg["data"]
+                    await websocket.send_text(raw_evt)
+                    # Кикнутый участник раньше продолжал получать все события
+                    # комнаты до собственного дисконнекта — членство проверялось
+                    # только на handshake. Ловим member_removed о себе и закрываем.
+                    try:
+                        evt = json.loads(raw_evt)
+                        if (
+                            (evt.get("event") or evt.get("type")) == "member_removed"
+                            and (evt.get("payload") or {}).get("removed_user_id") == user.id
+                        ):
+                            await websocket.close(code=4003)
+                            return
+                    except Exception:
+                        pass
         except asyncio.CancelledError:
             raise
         except Exception as exc:

@@ -28,7 +28,7 @@ class AddMembersRequest(BaseModel):
 
 
 class RoleChangeRequest(BaseModel):
-    role: str = Field(..., pattern=r"^(owner|admin|member)$")
+    role: str = Field(..., pattern=r"^(owner|admin|member|subscriber)$")
 
 
 class ChatMemberOut(BaseModel):
