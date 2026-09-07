@@ -115,13 +115,19 @@ struct ChatDetailView: View {
 				messageList
 				mentionBar
 				replyBar
-				ComposeBarView(
-					vm: vm, voice: voice,
-					showAttachMenu: $showAttachMenu,
-					showPhotoVideoPicker: $showPhotoVideoPicker,
-					showFilePicker: $showFilePicker,
-					showScheduleSheet: $showScheduleSheet
-				)
+				if vm.isReadOnlyChannel {
+					// Подписчик канала писать не может (бэкенд отвечает 403) —
+					// вместо композера показываем read-only плашку.
+					subscriberFooter
+				} else {
+					ComposeBarView(
+						vm: vm, voice: voice,
+						showAttachMenu: $showAttachMenu,
+						showPhotoVideoPicker: $showPhotoVideoPicker,
+						showFilePicker: $showFilePicker,
+						showScheduleSheet: $showScheduleSheet
+					)
+				}
 			}
 			.overlay(alignment: .bottomLeading) {
 				if showAttachMenu {
@@ -163,7 +169,9 @@ struct ChatDetailView: View {
 			Button("Отмена", role: .cancel) { deleteTarget = nil }
 		}
 		.sheet(isPresented: $showPartnerProfile) {
-			if vm.isGroup {
+			if vm.isGroup || vm.isChannel {
+				// Каналу — групповая инфо-карточка. Раньше канал открывал
+				// PartnerProfileSheet со «Заблокировать» на случайного подписчика.
 				GroupInfoSheet(vm: vm)
 			} else {
 				PartnerProfileSheet(
@@ -330,8 +338,9 @@ struct ChatDetailView: View {
 
 			Spacer()
 
-			// Кнопки звонка — только в 1-on-1
-			if !vm.isGroup, let partner = vm.otherMember?.user {
+			// Кнопки звонка — только в 1-on-1 (isPrivateChat, а не «не группа»:
+			// канал тоже не группа, но звонить его подписчику нельзя)
+			if vm.isPrivateChat, let partner = vm.otherMember?.user {
 				Button {
 					print("📞 [TAP] audio call button pressed for peer=\(partner.id)")
 					Task { await appState.startOutgoingCall(peer: partner, type: .audio) }
@@ -452,6 +461,19 @@ struct ChatDetailView: View {
 		case "audio": return "Аудио"
 		default:      return "Медиа"
 		}
+	}
+
+	/// Read-only плашка вместо композера для подписчика канала.
+	private var subscriberFooter: some View {
+		HStack {
+			Spacer()
+			Label("Вы подписаны на канал", systemImage: "megaphone")
+				.font(.footnote.weight(.medium))
+				.foregroundStyle(.secondary)
+			Spacer()
+		}
+		.padding(.vertical, 14)
+		.background(.ultraThinMaterial)
 	}
 
 	private var isMyChatAdmin: Bool {
@@ -785,7 +807,7 @@ struct ChatDetailView: View {
 					Label("История изменений", systemImage: "clock.arrow.circlepath")
 				}
 			}
-			if !vm.isGroup || isMyChatAdmin {
+			if vm.isPrivateChat || isMyChatAdmin {
 				if vm.pinnedMessage?.id == m.id {
 					Button { Task { await unpinMessage() } } label: {
 						Label("Открепить", systemImage: "pin.slash")

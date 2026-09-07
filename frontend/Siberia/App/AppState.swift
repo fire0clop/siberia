@@ -43,6 +43,14 @@ final class AppState: ObservableObject {
 		callSignaling.sender = { [weak self] frame in
 			await self?.sendOverMe(json: frame)
 		}
+		// Refresh-токен окончательно мёртв (401/403 на /auth/refresh) —
+		// разлогиниваем локально, иначе приложение навсегда зависает
+		// в «авторизованном» состоянии, где каждый запрос падает.
+		NotificationCenter.default.addObserver(
+			forName: .siberiaSessionExpired, object: nil, queue: .main
+		) { [weak self] _ in
+			Task { @MainActor [weak self] in await self?.handleSessionExpired() }
+		}
 		checkAuth()
 	}
 
@@ -423,9 +431,21 @@ final class AppState: ObservableObject {
 	}
 
 	func logout() async {
+		try? await AuthService.shared.logout()
+		await teardownLocalSession()
+	}
+
+	/// Сессия умерла на сервере (reuse-детект / отзыв) — серверный logout
+	/// бессмысленен и невозможен, чистим только локальное состояние.
+	func handleSessionExpired() async {
+		guard isAuthenticated else { return }
+		Log.auth.error("Refresh token rejected by server — logging out locally")
+		await teardownLocalSession()
+	}
+
+	private func teardownLocalSession() async {
 		await endActiveCall()
 		await meSocket.disconnect()
-		try? await AuthService.shared.logout()
 		TokenStorage.shared.clear()
 		ChatCacheService.shared.clearAll()
 		currentUser = nil

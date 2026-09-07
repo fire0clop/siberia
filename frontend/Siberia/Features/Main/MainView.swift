@@ -3,6 +3,7 @@ import SwiftUI
 struct MainView: View {
 
 	@EnvironmentObject var appState: AppState
+	@State private var selectedTab = 0
 
 	init() {
 		// Custom tab bar appearance — blurred material, no top line
@@ -18,17 +19,24 @@ struct MainView: View {
 	}
 
 	var body: some View {
-		TabView {
+		TabView(selection: $selectedTab) {
 			ChatsView()
 				.tabItem { Label("Чаты",   systemImage: "message") }
+				.tag(0)
 
 			AddFriendView()
 				.tabItem { Label("Люди",   systemImage: "person.2") }
+				.tag(1)
 
 			ProfileView()
 				.tabItem { Label("Профиль", systemImage: "person.crop.circle") }
+				.tag(2)
 		}
 		.tint(Color.accentColor)
+		// Тап по пушу должен показать чат, даже если открыта другая вкладка
+		.onReceive(NotificationCenter.default.publisher(for: .siberiaOpenChat)) { _ in
+			selectedTab = 0
+		}
 		// Входящий звонок теперь показывает САМ iOS через CallKit (системный
 		// экран с зелёной/красной кнопкой). Нашу IncomingCallView больше не
 		// открываем — CallKit передаст результат через CXProvider-делегат.

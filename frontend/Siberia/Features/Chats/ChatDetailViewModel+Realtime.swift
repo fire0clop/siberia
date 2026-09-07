@@ -109,8 +109,15 @@ extension ChatDetailViewModel {
 
 				if !messages.contains(where: { $0.id == resolved.id }) {
 					upsert(resolved)
-					if !isAtBottom && resolved.userId != currentUserId {
-						newMessagesBelowCount += 1
+					if resolved.userId != currentUserId {
+						if isAtBottom {
+							// Чат открыт и пользователь внизу — сообщение прочитано.
+							// Раньше markRead здесь не вызывался вовсе, и у открытого
+							// чата в списке рос unread-бейдж.
+							Task { await markRead() }
+						} else {
+							newMessagesBelowCount += 1
+						}
 					}
 				}
 			} else {

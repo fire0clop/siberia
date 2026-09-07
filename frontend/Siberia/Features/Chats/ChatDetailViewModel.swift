@@ -90,6 +90,22 @@ final class ChatDetailViewModel: ObservableObject {
 	@Published var pinnedMessage: ChatMessage?
 	@Published var chatMembers: [ChatMember] = []
 	@Published var isGroup: Bool = false
+	/// Тип чата с бэка: "private" / "group" / "channel" / "saved". nil — ещё не загружен.
+	@Published var chatType: String? = nil
+
+	var isChannel: Bool { chatType == "channel" }
+	/// true только когда тип уже загружен и это DM. Не путать с "!isGroup":
+	/// канал тоже не группа, и раньше он рендерился как личный чат —
+	/// с кнопками звонка и «Заблокировать» на случайного подписчика.
+	var isPrivateChat: Bool { chatType == "private" }
+	var myRole: String? {
+		guard let me = currentUserId else { return nil }
+		return chatMembers.first(where: { $0.userId == me })?.role
+	}
+	/// Подписчик канала не может писать (бэкенд отвечает 403) — прячем композер.
+	var isReadOnlyChannel: Bool {
+		isChannel && !(myRole == "owner" || myRole == "admin")
+	}
 
 	// MARK: – Private
 
@@ -249,28 +265,13 @@ final class ChatDetailViewModel: ObservableObject {
 			}
 		}
 
-		do {
-			let members = try await membersTask
-			chatMembers = members
-			// Resolve title from partner nickname for DM chats (backend may return nil/generic title)
-			if let myId = currentUserId,
-			   let nick = members.first(where: { $0.userId != myId })?.user.nickname {
-				title = nick
-			}
-			// Presence for private chats
-			if members.count == 2,
-			   let myId = currentUserId,
-			   let other = members.first(where: { $0.userId != myId }) {
-				partnerUserId = other.userId
-				await fetchPresence()
-				startPresencePolling()
-			}
-		} catch {
-			Log.chat.error("members fetch failed: \(String(describing: error))")
-		}
-
+		// Сначала тип чата: до него нельзя решать, «личный» ли это чат.
+		// Раньше title/presence/partner выставлялись по первому «не-я» участнику
+		// БЕЗ проверки типа — группа и канал рендерились как DM (кнопки звонка
+		// и «Заблокировать» доставались случайному участнику).
 		do {
 			let detail = try await detailTask
+			chatType = detail.type
 			isGroup = (detail.type == "group")
 			// Restore draft if nothing typed yet
 			if draft.isEmpty, let draftText = detail.draftText, !draftText.isEmpty {
@@ -282,6 +283,28 @@ final class ChatDetailViewModel: ObservableObject {
 			}
 		} catch {
 			Log.chat.error("chatDetail fetch failed: \(String(describing: error))")
+		}
+
+		do {
+			let members = try await membersTask
+			chatMembers = members
+			// Resolve title from partner nickname — ТОЛЬКО для DM
+			// (backend may return nil/generic title)
+			if isPrivateChat,
+			   let myId = currentUserId,
+			   let nick = members.first(where: { $0.userId != myId })?.user.nickname {
+				title = nick
+			}
+			// Presence — только для DM
+			if isPrivateChat,
+			   let myId = currentUserId,
+			   let other = members.first(where: { $0.userId != myId }) {
+				partnerUserId = other.userId
+				await fetchPresence()
+				startPresencePolling()
+			}
+		} catch {
+			Log.chat.error("members fetch failed: \(String(describing: error))")
 		}
 	}
 

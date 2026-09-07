@@ -177,6 +177,8 @@ final class APIClient {
 
 	private func refreshTokens() async throws {
 		guard let refresh = TokenStorage.shared.refreshToken else {
+			// Токена нет вовсе — сессии не существует, сообщаем AppState
+			notifySessionExpired()
 			throw APIClientError.refreshFailed
 		}
 
@@ -196,12 +198,28 @@ final class APIClient {
 		urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
 		let (data, response) = try await URLSession.shared.data(for: urlRequest)
-		guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+		guard let http = response as? HTTPURLResponse else {
+			throw APIClientError.refreshFailed
+		}
+		if http.statusCode == 401 || http.statusCode == 403 {
+			// Сервер однозначно отверг refresh-токен (ротация/reuse-детект/отзыв
+			// сессии) — восстановить сессию невозможно. Раньше здесь просто
+			// бросался refreshFailed, никто не разлогинивал, и после переустановки
+			// приложение висело на главном экране с вечной «Сессия истекла».
+			// Сетевые ошибки и 5xx сюда НЕ попадают — офлайн не должен разлогинивать.
+			notifySessionExpired()
+			throw APIClientError.refreshFailed
+		}
+		guard 200..<300 ~= http.statusCode else {
 			throw APIClientError.refreshFailed
 		}
 
 		let decoded = try jsonDecoder.decode(TokenResponse.self, from: data)
 		TokenStorage.shared.accessToken = decoded.accessToken
 		TokenStorage.shared.refreshToken = decoded.refreshToken
+	}
+
+	private func notifySessionExpired() {
+		NotificationCenter.default.post(name: .siberiaSessionExpired, object: nil)
 	}
 }

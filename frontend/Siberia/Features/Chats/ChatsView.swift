@@ -160,6 +160,17 @@ struct ChatsView: View {
 		.onReceive(NotificationCenter.default.publisher(for: .siberiaChatsShouldReload)) { _ in
 			Task { await load() }
 		}
+		// Тап по push-уведомлению → открыть чат. Раньше это событие никто
+		// не слушал, и тап просто разворачивал приложение.
+		.onReceive(NotificationCenter.default.publisher(for: .siberiaOpenChat)) { note in
+			guard let chatId = note.userInfo?["chatId"] as? Int else { return }
+			let known = chats.first(where: { $0.id == chatId })
+			navPath.append(ChatRoute(
+				chatId: chatId,
+				title: known.map(resolvedTitle) ?? "Чат",
+				syncSeq: known?.syncSeq ?? 0
+			))
+		}
 		.overlay {
 			if let chat = previewChat {
 				ChatPeekOverlay(

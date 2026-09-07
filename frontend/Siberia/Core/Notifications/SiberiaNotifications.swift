@@ -8,4 +8,7 @@ extension Notification.Name {
 	/// Запрос открыть конкретный чат (из тапа по push-уведомлению).
 	/// `userInfo`: ["chatId": Int].
 	static let siberiaOpenChat = Notification.Name("SiberiaOpenChat")
+	/// Refresh-токен мёртв (сервер ответил 401/403 на /auth/refresh) —
+	/// сессию не спасти, AppState должен разлогинить локально.
+	static let siberiaSessionExpired = Notification.Name("SiberiaSessionExpired")
 }

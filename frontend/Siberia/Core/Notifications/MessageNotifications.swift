@@ -159,8 +159,19 @@ final class SiberiaNotificationDelegate: NSObject, UNUserNotificationCenterDeleg
 		defer { completionHandler() }
 
 		let userInfo = response.notification.request.content.userInfo
-		guard let chatId = userInfo["chatId"] as? Int,
-		      let messageId = userInfo["messageId"] as? Int else { return }
+		// Локальные уведомления несут chatId/messageId, а APNs-пуши с бэка —
+		// chat_id/message_id (числа приходят как NSNumber). Поддерживаем оба
+		// написания — раньше тап по remote-пушу молча не находил ключей.
+		func intValue(_ keys: String...) -> Int? {
+			for key in keys {
+				if let n = userInfo[key] as? Int { return n }
+				if let n = userInfo[key] as? NSNumber { return n.intValue }
+				if let s = userInfo[key] as? String, let n = Int(s) { return n }
+			}
+			return nil
+		}
+		guard let chatId = intValue("chatId", "chat_id"),
+		      let messageId = intValue("messageId", "message_id") else { return }
 
 		switch response.actionIdentifier {
 

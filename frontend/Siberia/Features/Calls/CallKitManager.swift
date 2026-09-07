@@ -72,6 +72,16 @@ final class CallKitManager: NSObject {
 
 		provider.reportNewIncomingCall(with: uuid, update: update) { error in
 			if let error {
+				// Бэкенд шлёт и VoIP push, и WS call_incoming — второй report того же
+				// UUID возвращает callUUIDAlreadyExists. Это НЕ провал: звонок уже на
+				// экране, и маппинг обязан жить, иначе Accept/End бьют в action.fail()
+				// и звонок нельзя ни принять, ни завершить.
+				let isDuplicate = (error as? CXErrorCodeIncomingCallError)?.code == .callUUIDAlreadyExists
+				if isDuplicate {
+					Log.calls.info("CallKit reportIncoming: call \(callId) already reported — keeping mapping")
+					completion?(nil)
+					return
+				}
 				Log.calls.error("CallKit reportIncoming failed: \(String(describing: error))")
 				// Чистим маппинг — звонок реально не зарегистрировался
 				Task { @MainActor in self.unregister(callId: callId) }
