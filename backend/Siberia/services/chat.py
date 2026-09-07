@@ -134,6 +134,58 @@ async def create_chat(
     return chat
 
 
+async def create_secret_chat(
+    db: AsyncSession, creator_id: int, peer_id: int, eph_pub: str
+) -> Chat:
+    """Секретный E2E-чат: сервер хранит только handshake-материал.
+
+    Ключ чата обе стороны выводят сами:
+      creator: X25519(eph_priv,  peer_identity_pub)
+      peer:    X25519(id_priv,   eph_pub)
+    → HKDF → AES-GCM. Plaintext сервера не достигает.
+    """
+    from models.e2e_key import E2EKey
+
+    if creator_id == peer_id:
+        raise HTTPException(status_code=400, detail="Cannot start a secret chat with yourself")
+
+    peer = await db.get(User, peer_id)
+    if peer is None or peer.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Блокировки и privacy — как у обычного DM
+    await _check_can_message(db, creator_id, peer_id)
+
+    creator_key = await db.get(E2EKey, creator_id)
+    if creator_key is None:
+        raise HTTPException(status_code=409, detail="Publish your E2E key first (PUT /e2e/keys)")
+    peer_key = await db.get(E2EKey, peer_id)
+    if peer_key is None:
+        raise HTTPException(status_code=409, detail="Peer has no E2E key yet")
+
+    chat = Chat(
+        type=ChatType.secret,
+        e2e_handshake={
+            "v": 1,
+            "creator_id": creator_id,
+            "eph_pub": eph_pub,
+            "creator_identity_pub": creator_key.public_key,
+            "peer_identity_pub": peer_key.public_key,
+        },
+    )
+    db.add(chat)
+    await db.flush()
+
+    now = datetime.now(timezone.utc)
+    db.add_all([
+        ChatMember(chat_id=chat.id, user_id=creator_id, role=MemberRole.member, joined_at=now),
+        ChatMember(chat_id=chat.id, user_id=peer_id, role=MemberRole.member, joined_at=now),
+    ])
+    await db.commit()
+    await db.refresh(chat)
+    return chat
+
+
 async def get_or_create_saved_chat(db: AsyncSession, user_id: int) -> Chat:
     result = await db.execute(
         select(Chat)
@@ -283,7 +335,8 @@ async def enrich_chats_for_list(db: AsyncSession, viewer_id: int, chats: list) -
             }
 
     # 3) peer для приватных чатов — батчем участников, затем build_user_out
-    private_ids = [c.id for c in chats if getattr(c.type, "value", c.type) == "private"]
+    # peer нужен и приватным, и секретным чатам (оба 1-на-1)
+    private_ids = [c.id for c in chats if getattr(c.type, "value", c.type) in ("private", "secret")]
     if private_ids:
         member_rows = await db.execute(
             select(_ChatMember.chat_id, _ChatMember.user_id).where(

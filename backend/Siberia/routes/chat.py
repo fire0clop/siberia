@@ -106,6 +106,24 @@ async def create_group(
     return await create_group_chat(db, current["user"].id, data.title, data.user_ids, data.description)
 
 
+class SecretChatCreate(BaseModel):
+    user_id: int
+    eph_pub: str = Field(..., min_length=40, max_length=128)
+
+
+# POST /chats/secret — MUST be before /{chat_id} routes
+@router.post("/secret", response_model=ChatOut)
+async def create_secret(
+    data: SecretChatCreate,
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from routes.e2e import _validate_x25519_pub
+    from services.chat import create_secret_chat
+    _validate_x25519_pub(data.eph_pub)
+    return await create_secret_chat(db, current["user"].id, data.user_id, data.eph_pub)
+
+
 # GET /chats/join/{slug} — MUST be before /{chat_id} routes
 @router.get("/join/{slug}", response_model=ChatOut)
 async def join_chat(
@@ -154,6 +172,7 @@ async def send_chat_message(
         forward_message_id=data.forward_message_id,
         send_at=data.send_at,
         entities=data.entities,
+        encrypted_payload=data.encrypted_payload,
     )
     media_type = None
     if msg.media_id:
@@ -177,6 +196,7 @@ async def send_chat_message(
             "mention_user_ids": msg.mention_user_ids,
             "entities": msg.text_entities,
             "link_preview": msg.link_preview,
+            "encrypted_payload": msg.encrypted_payload,
             "reactions": None,
             "send_at": msg.send_at,
             "created_at": msg.created_at,

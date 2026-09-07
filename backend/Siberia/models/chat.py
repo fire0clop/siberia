@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, BigInteger, Enum, Boolean
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from db import Base
@@ -13,6 +13,7 @@ class ChatType(str, enum.Enum):
     group = "group"
     saved = "saved"
     channel = "channel"
+    secret = "secret"  # E2E: контент шифруется на клиентах
 
 
 class Chat(Base):
@@ -42,6 +43,10 @@ class Chat(Base):
     subscribers_count = Column(Integer, nullable=False, default=0, server_default="0")
 
     sync_seq = Column(BigInteger, nullable=False, default=0, server_default="0")
+
+    # E2E handshake (только для type=secret):
+    # {creator_id, eph_pub, creator_identity_pub, peer_identity_pub}
+    e2e_handshake = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

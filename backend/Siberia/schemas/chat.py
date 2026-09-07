@@ -77,6 +77,8 @@ class ChatOut(BaseModel):
     draft_text: Optional[str] = None
     is_public: bool = False
     subscribers_count: int = 0
+    # E2E handshake секретного чата (клиенты выводят ключ сами)
+    e2e_handshake: Optional[dict] = None
     # Обогащение для списка чатов (GET /chats) — чтобы клиент не делал N+1
     is_archived: bool = False
     unread_count: int = 0

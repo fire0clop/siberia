@@ -5,6 +5,7 @@ from sqlalchemy import (
     Integer,
     BigInteger,
     String,
+    Text,
     ForeignKey,
     DateTime,
     Index,
@@ -53,6 +54,10 @@ class Message(Base):
     # Разметка текста: [{"type": "bold"|"italic"|..., "offset": N, "length": M}]
     # offset/length — в UTF-16 code units (общий знаменатель Swift/Python)
     text_entities = Column(JSONB, nullable=True)
+
+    # E2E (секретные чаты): base64(nonce || AES-GCM ciphertext+tag).
+    # Для secret-чатов text всегда NULL — сервер контента не видит.
+    encrypted_payload = Column(Text, nullable=True)
 
     # OG-превью первой ссылки: {url,title,description,image_url,site_name}|null.
     # Заполняется асинхронно ARQ-задачей fetch_link_preview.

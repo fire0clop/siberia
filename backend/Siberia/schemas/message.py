@@ -24,6 +24,8 @@ class MessageEntity(BaseModel):
 
 class MessageCreate(BaseModel):
     content: Optional[str] = Field(None, min_length=1, max_length=4096)
+    # E2E (секретные чаты): base64(nonce || AES-GCM ciphertext+tag)
+    encrypted_payload: Optional[str] = Field(None, min_length=24, max_length=20000)
     entities: Optional[list[MessageEntity]] = Field(None, max_length=100)
     media_id: Optional[UUID] = None
     client_message_id: Optional[UUID] = None
@@ -33,8 +35,9 @@ class MessageCreate(BaseModel):
 
     @model_validator(mode="after")
     def content_or_media_or_forward_required(self) -> "MessageCreate":
-        if not self.content and not self.media_id and not self.forward_message_id:
-            raise ValueError("Either content, media_id, or forward_message_id must be provided")
+        if not self.content and not self.media_id and not self.forward_message_id \
+                and not self.encrypted_payload:
+            raise ValueError("Either content, media_id, forward_message_id or encrypted_payload must be provided")
         return self
 
 
@@ -72,6 +75,7 @@ class MessageOut(BaseModel):
     mention_user_ids: Optional[list[int]] = None
     entities: Optional[list[MessageEntity]] = None
     link_preview: Optional[dict] = None
+    encrypted_payload: Optional[str] = None
     reactions: Optional[dict[str, int]] = None
     send_at: Optional[datetime] = None
     created_at: datetime

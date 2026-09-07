@@ -31,6 +31,7 @@ from routes.channel import router as channel_router
 from routes.call import router as call_router
 from routes.folder import router as folder_router
 from routes.story import router as story_router
+from routes.e2e import router as e2e_router
 
 
 @asynccontextmanager
@@ -113,4 +114,5 @@ app.include_router(channel_router)
 app.include_router(call_router)
 app.include_router(folder_router)
 app.include_router(story_router)
+app.include_router(e2e_router)
 app.include_router(ws_router)
