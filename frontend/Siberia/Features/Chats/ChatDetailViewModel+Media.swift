@@ -218,6 +218,21 @@ extension ChatDetailViewModel {
 
 	// MARK: Media URL / meta cache
 
+	/// Ретрай битой картинки с бюджетом. Раньше failure-ветка AsyncImage
+	/// безусловно чистила кеш и перезапрашивала URL — на реально битом медиа
+	/// это давало бесконечный цикл запросов. Две попытки покрывают протухший
+	/// presigned URL; дальше — стоп.
+	func retryMediaLoad(mediaId: String) async {
+		let attempts = mediaRetryCounts[mediaId, default: 0]
+		guard attempts < 2 else {
+			failedMediaIds.insert(mediaId)
+			return
+		}
+		mediaRetryCounts[mediaId] = attempts + 1
+		mediaURLCache.removeValue(forKey: mediaId)
+		_ = await loadMediaURL(mediaId: mediaId)
+	}
+
 	func loadMediaURL(mediaId: String) async -> String? {
 		guard mediaId != "pending" else { return nil }
 		if let cached = mediaURLCache[mediaId] { return cached }

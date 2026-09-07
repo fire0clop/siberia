@@ -233,6 +233,8 @@ struct PartnerProfileSheet: View {
 		do {
 			try await UserService.shared.block(userId: uid)
 			dismiss()
+			// Закрываем экран чата: писать заблокированному всё равно нельзя (403)
+			NotificationCenter.default.post(name: .siberiaCloseChat, object: nil, userInfo: ["chatId": vm.chatId])
 			NotificationCenter.default.post(name: .siberiaChatsShouldReload, object: nil)
 		} catch {
 			Log.profile.error("block failed: \(String(describing: error))")

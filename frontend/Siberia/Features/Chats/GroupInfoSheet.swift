@@ -235,7 +235,9 @@ struct GroupInfoSheet: View {
 		do {
 			try await ChatService.shared.leaveChat(chatId: vm.chatId)
 			dismiss()
-			// Notify chats list to refresh
+			// Закрываем и сам экран чата — раньше после выхода из группы он
+			// оставался открытым и позволял печатать в чат, где нас уже нет.
+			NotificationCenter.default.post(name: .siberiaCloseChat, object: nil, userInfo: ["chatId": vm.chatId])
 			NotificationCenter.default.post(name: .siberiaChatsShouldReload, object: nil)
 		} catch {
 			Log.chat.error("leaveChat failed: \(String(describing: error))")

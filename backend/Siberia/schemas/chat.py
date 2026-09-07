@@ -37,6 +37,11 @@ class ChatMemberOut(BaseModel):
     user: UserOut
     role: str
     joined_at: datetime
+    # Максимальный message_id, прочитанный этим участником в чате.
+    # Клиент инициализирует галочки прочтения при открытии — раньше они
+    # заполнялись только live-событиями read_receipt и до первого события
+    # все свои сообщения выглядели непрочитанными.
+    last_read_message_id: Optional[int] = None
 
 
 class ChannelCreate(BaseModel):

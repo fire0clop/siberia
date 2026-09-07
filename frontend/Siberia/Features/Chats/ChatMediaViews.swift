@@ -32,10 +32,7 @@ struct AlbumThumbView: View {
 				case .success(let img):
 					img.resizable().scaledToFill()
 				case .failure:
-					thumbPlaceholder.task {
-						vm.mediaURLCache.removeValue(forKey: mediaId)
-						_ = await vm.loadMediaURL(mediaId: mediaId)
-					}
+					thumbPlaceholder.task { await vm.retryMediaLoad(mediaId: mediaId) }
 				default:
 					thumbPlaceholder
 				}
@@ -92,10 +89,8 @@ struct ReplyThumbnailView: View {
 						case .success(let img):
 							img.resizable().scaledToFill()
 						case .failure:
-							thumb(systemName: "photo.fill").task {
-								vm.mediaURLCache.removeValue(forKey: mediaId)
-								_ = await vm.loadMediaURL(mediaId: mediaId)
-							}
+							thumb(systemName: "photo.fill")
+								.task { await vm.retryMediaLoad(mediaId: mediaId) }
 						default:
 							thumb(systemName: "photo.fill")
 						}

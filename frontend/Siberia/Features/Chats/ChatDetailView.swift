@@ -38,6 +38,7 @@ struct ChatDetailView: View {
 	@StateObject private var vm: ChatDetailViewModel
 	@StateObject private var voice = VoiceRecorder()
 	@Environment(\.dismiss) private var dismiss
+	@Environment(\.scenePhase) private var scenePhase
 	@EnvironmentObject private var appState: AppState
 
 	// Partner profile
@@ -148,6 +149,18 @@ struct ChatDetailView: View {
 			.animation(.spring(response: 0.22, dampingFraction: 0.75), value: showAttachMenu)
 
 			errorToast
+		}
+		// «Выйти из группы» / «Заблокировать» должны закрывать сам чат,
+		// а не только шит — иначе можно печатать в чат, где нас уже нет.
+		.onReceive(NotificationCenter.default.publisher(for: .siberiaCloseChat)) { note in
+			guard let cid = note.userInfo?["chatId"] as? Int, cid == vm.chatId else { return }
+			dismiss()
+		}
+		// Возврат из фона: чат-сокет мог умереть в suspend
+		.onChange(of: scenePhase) { _, phase in
+			if phase == .active {
+				Task { await vm.ensureSocketAlive() }
+			}
 		}
 		.navigationBarBackButtonHidden(true)
 		.toolbar(.hidden, for: .navigationBar)

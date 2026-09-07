@@ -92,12 +92,27 @@ final class AppState: ObservableObject {
 	}
 
 	/// Отправить произвольный JSON через /ws/me (используется сигналингом звонков).
+	/// При мёртвом сокете — переоткрываем и повторяем один раз: молчаливая
+	/// потеря SDP/ICE-кадра означала несостоявшийся звонок.
 	func sendOverMe(json: [String: Any]) async {
 		do {
 			try await meSocket.send(json: json)
 		} catch {
-			Log.calls.error("WS send failed: \(String(describing: error))")
+			Log.calls.error("WS send failed, retrying after reconnect: \(String(describing: error))")
+			await meSocket.ensureConnected()
+			do {
+				try await meSocket.send(json: json)
+			} catch {
+				Log.calls.error("WS send failed after retry — frame dropped: \(String(describing: error))")
+			}
 		}
+	}
+
+	/// Возврат приложения из фона: убеждаемся что /ws/me жив, не пересоздавая
+	/// здоровое соединение (раньше realtime после фона молчал до 30 секунд).
+	func handleAppBecameActive() async {
+		guard isAuthenticated else { return }
+		await meSocket.ensureConnected()
 	}
 
 	// MARK: – WS frame router

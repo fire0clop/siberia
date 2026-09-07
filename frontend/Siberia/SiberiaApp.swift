@@ -6,6 +6,7 @@ struct SiberiaApp: App {
 
 	@UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 	@StateObject private var appState = AppState()
+	@Environment(\.scenePhase) private var scenePhase
 
 	init() {
 		UNUserNotificationCenter.current().delegate = SiberiaNotificationDelegate.shared
@@ -18,12 +19,21 @@ struct SiberiaApp: App {
 
 	var body: some Scene {
 		WindowGroup {
-			if appState.isAuthenticated {
-				MainView()
-					.environmentObject(appState)
-			} else {
-				AuthView()
-					.environmentObject(appState)
+			Group {
+				if appState.isAuthenticated {
+					MainView()
+						.environmentObject(appState)
+				} else {
+					AuthView()
+						.environmentObject(appState)
+				}
+			}
+			// Возврат из фона: /ws/me мог умереть, пока iOS держала нас в suspend.
+			// Живое соединение ping не трогает, мёртвое переоткрывается сразу.
+			.onChange(of: scenePhase) { _, phase in
+				if phase == .active {
+					Task { await appState.handleAppBecameActive() }
+				}
 			}
 		}
 	}

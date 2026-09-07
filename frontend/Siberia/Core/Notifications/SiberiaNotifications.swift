@@ -11,4 +11,7 @@ extension Notification.Name {
 	/// Refresh-токен мёртв (сервер ответил 401/403 на /auth/refresh) —
 	/// сессию не спасти, AppState должен разлогинить локально.
 	static let siberiaSessionExpired = Notification.Name("SiberiaSessionExpired")
+	/// Закрыть открытый экран чата (после «выйти из группы» / «заблокировать»).
+	/// `userInfo`: ["chatId": Int].
+	static let siberiaCloseChat = Notification.Name("SiberiaCloseChat")
 }

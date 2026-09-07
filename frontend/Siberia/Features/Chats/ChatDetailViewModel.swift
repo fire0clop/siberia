@@ -48,6 +48,9 @@ final class ChatDetailViewModel: ObservableObject {
 	@Published var mediaDurations: [String: Int]    = [:]
 	@Published var mediaWaveforms: [String: [Float]] = [:]
 	@Published var videoThumbnailCache: [String: UIImage] = [:]
+	/// Бюджет ретраев битого медиа (см. retryMediaLoad) + метка «безнадёжно»
+	var mediaRetryCounts: [String: Int] = [:]
+	@Published var failedMediaIds: Set<String> = []
 	/// Incremented after every outgoing message so the view can force-scroll to bottom
 	@Published var scrollToBottomSignal: Int = 0
 	/// Set to a message ID to trigger a scroll-to in ChatDetailView (reset to nil after consuming)
@@ -187,13 +190,24 @@ final class ChatDetailViewModel: ObservableObject {
 			currentUserId = me.id
 		}
 		await loadMessages()
+		// .task отменяется при уходе с экрана; без этих гардов ушедший
+		// пользователь получал заново открытый сокет и вечный presence-polling
+		// (onDisappear уже отработал) — утечка VM + живого WS на каждый чат.
+		guard !Task.isCancelled else { return }
 		await markRead()
 		await loadChatMeta()
+		guard !Task.isCancelled else { isLoading = false; return }
 		try? await runSync()
+		guard !Task.isCancelled else { isLoading = false; return }
 		await connectSocket()
 		// Если предыдущая сессия что-то не дослала — добиваем сейчас.
 		await flushPendingQueue()
 		isLoading = false
+	}
+
+	/// Возврат из фона: чат-сокет мог умереть в suspend — проверяем ping'ом.
+	func ensureSocketAlive() async {
+		await socket.ensureConnected()
 	}
 
 	func onDisappear() async {
@@ -317,6 +331,14 @@ final class ChatDetailViewModel: ObservableObject {
 		do {
 			let members = try await membersTask
 			chatMembers = members
+			// Инициализируем галочки прочтения с бэка — раньше readReceipts
+			// заполнялись только live-событиями, и до первого read_receipt
+			// все свои сообщения показывали одну галку.
+			for m in members {
+				guard m.userId != currentUserId, let lr = m.lastReadMessageId else { continue }
+				readReceipts[m.userId] = max(readReceipts[m.userId] ?? 0, lr)
+				partnerReadUpToMessageId = max(partnerReadUpToMessageId, lr)
+			}
 			// Resolve title from partner nickname — ТОЛЬКО для DM
 			// (backend may return nil/generic title)
 			if isPrivateChat,
@@ -324,13 +346,15 @@ final class ChatDetailViewModel: ObservableObject {
 			   let nick = members.first(where: { $0.userId != myId })?.user.nickname {
 				title = nick
 			}
-			// Presence — только для DM
+			// Presence — только для DM (и только если экран ещё жив:
+			// после отмены .task запускать вечный polling — утечка)
 			if isPrivateChat,
 			   let myId = currentUserId,
-			   let other = members.first(where: { $0.userId != myId }) {
+			   let other = members.first(where: { $0.userId != myId }),
+			   !Task.isCancelled {
 				partnerUserId = other.userId
 				await fetchPresence()
-				startPresencePolling()
+				if !Task.isCancelled { startPresencePolling() }
 			}
 		} catch {
 			Log.chat.error("members fetch failed: \(String(describing: error))")

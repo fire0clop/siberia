@@ -413,6 +413,8 @@ struct SearchMessagesResponse: Codable {
 struct ChatMember: Codable, Identifiable {
 	let role: String?
 	let joinedAt: String?
+	/// Максимальный прочитанный этим участником message_id (для галочек)
+	let lastReadMessageId: Int?
 	let user: User
 
 	var id: Int { user.id }

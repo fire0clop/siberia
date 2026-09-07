@@ -299,10 +299,29 @@ async def list_members(
     viewer_id = current["user"].id
     await check_user_in_chat(db, viewer_id, chat_id)
     rows = await get_members(db, chat_id, limit, offset)
+
+    # Батчем: max прочитанный message_id на участника — для инициализации
+    # галочек прочтения на клиенте (см. ChatMemberOut.last_read_message_id)
+    from models.message import Message as _Message
+    from models.message_status import MessageStatus as _MS, MessageStatusEnum as _MSE
+    from sqlalchemy import func as _func
+    read_rows = await db.execute(
+        select(_MS.user_id, _func.max(_MS.message_id))
+        .join(_Message, _Message.id == _MS.message_id)
+        .where(_Message.chat_id == chat_id, _MS.status == _MSE.read)
+        .group_by(_MS.user_id)
+    )
+    last_read = {uid: mid for uid, mid in read_rows.all()}
+
     result = []
     for m, u in rows:
         user_data = await build_user_out(db, u, viewer_id=viewer_id)
-        result.append(ChatMemberOut(user=UserOut(**user_data), role=m.role.value, joined_at=m.joined_at))
+        result.append(ChatMemberOut(
+            user=UserOut(**user_data),
+            role=m.role.value,
+            joined_at=m.joined_at,
+            last_read_message_id=last_read.get(u.id),
+        ))
     return result
 
 

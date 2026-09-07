@@ -165,11 +165,12 @@ struct MessageBubbleView: View {
 							}
 						}
 				case .failure:
-					mediaSkeleton(240, 200)
-						.task {
-							vm.mediaURLCache.removeValue(forKey: mediaId)
-							_ = await vm.loadMediaURL(mediaId: mediaId)
-						}
+					if vm.failedMediaIds.contains(mediaId) {
+						brokenMediaPlaceholder(240, 200)
+					} else {
+						mediaSkeleton(240, 200)
+							.task { await vm.retryMediaLoad(mediaId: mediaId) }
+					}
 				default: mediaSkeleton(240, 200)
 				}
 			}
@@ -337,6 +338,21 @@ struct MessageBubbleView: View {
 	private func mediaSkeleton(_ w: CGFloat, _ h: CGFloat) -> some View {
 		Rectangle().fill(Color(.systemFill)).frame(width: w, height: h)
 			.overlay(ProgressView().tint(.secondary))
+	}
+
+	/// Статичный «битый файл» — после исчерпания ретраев больше не крутим
+	/// спиннер и не бомбим бэкенд запросами.
+	private func brokenMediaPlaceholder(_ w: CGFloat, _ h: CGFloat) -> some View {
+		Rectangle().fill(Color(.systemFill)).frame(width: w, height: h)
+			.overlay(
+				VStack(spacing: 6) {
+					Image(systemName: "photo.badge.exclamationmark")
+						.font(.system(size: 28))
+					Text("Не удалось загрузить")
+						.font(.caption2)
+				}
+				.foregroundStyle(.secondary)
+			)
 	}
 
 	// MARK: – Deleted bubble
