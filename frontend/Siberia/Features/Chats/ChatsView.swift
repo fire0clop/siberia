@@ -27,6 +27,9 @@ struct ChatsView: View {
 		case all, personal, groups, channels, archive, folder(Int)
 	}
 	@State private var selectedFilter: ChatFilter = .all
+	// Stories
+	@State private var storyGroups: [StoryFeedGroup] = []
+	@State private var storyViewerGroupIndex: Int? = nil
 	@State private var folders: [ChatFolderSummary] = []
 	@State private var showNewFolderAlert = false
 	@State private var newFolderName = ""
@@ -101,6 +104,14 @@ struct ChatsView: View {
 	var body: some View {
 		NavigationStack(path: $navPath) {
 			VStack(spacing: 0) {
+				if !storyGroups.isEmpty || appState.currentUser != nil {
+					StoriesRowView(
+						groups: storyGroups,
+						currentUserId: appState.currentUser?.id,
+						onOpenGroup: { idx in storyViewerGroupIndex = idx },
+						onFeedChanged: { Task { await loadStories() } }
+					)
+				}
 				filterBar
 				Group {
 					if isLoading && chats.isEmpty {
@@ -203,6 +214,20 @@ struct ChatsView: View {
 				title: known.map(resolvedTitle) ?? "Чат",
 				syncSeq: known?.syncSeq ?? 0
 			))
+		}
+		.fullScreenCover(isPresented: .init(
+			get: { storyViewerGroupIndex != nil },
+			set: { if !$0 { storyViewerGroupIndex = nil } }
+		)) {
+			if let idx = storyViewerGroupIndex {
+				StoryViewerView(
+					groups: storyGroups,
+					startGroupIndex: idx,
+					currentUserId: appState.currentUser?.id,
+					onClose: { storyViewerGroupIndex = nil },
+					onFeedChanged: { Task { await loadStories() } }
+				)
+			}
 		}
 		.overlay {
 			if let chat = previewChat {
@@ -602,8 +627,10 @@ struct ChatsView: View {
 			async let m: () = loadMemberNames()
 			async let l: () = loadLastMessages()
 			async let f = (try? ChatService.shared.listFolders()) ?? []
+			async let st: () = loadStories()
 			await m; await l
 			folders = await f
+			await st
 			// Persist for next launch
 			ChatCacheService.shared.saveChats(chats)
 			ChatCacheService.shared.saveLastMessages(lastMessages)
@@ -611,6 +638,10 @@ struct ChatsView: View {
 		} catch {
 			self.error = error.localizedDescription
 		}
+	}
+
+	private func loadStories() async {
+		storyGroups = (try? await StoriesService.shared.feed()) ?? storyGroups
 	}
 
 	private func loadMemberNames() async {

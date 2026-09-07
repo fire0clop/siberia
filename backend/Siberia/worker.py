@@ -196,15 +196,34 @@ async def cleanup_expired_verifications(ctx: dict) -> None:
         logger.info("Cleaned up %d expired email verifications", count)
 
 
+# ── Cleanup expired stories ───────────────────────────────────────────────────
+
+async def cleanup_expired_stories(ctx: dict) -> None:
+    """Удаляет сторис старше их expires_at (views каскадом)."""
+    from models.story import Story
+    from sqlalchemy import delete as sa_delete
+
+    async with async_session_maker() as db:
+        now = datetime.now(timezone.utc)
+        result = await db.execute(
+            sa_delete(Story).where(Story.expires_at < now).returning(Story.id)
+        )
+        count = len(result.all())
+        await db.commit()
+    if count:
+        logger.info("Cleaned up %d expired stories", count)
+
+
 # ── Worker settings ───────────────────────────────────────────────────────────
 
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
-    functions = [deliver_scheduled_messages, fetch_link_preview, expire_stale_calls, cleanup_expired_verifications]
+    functions = [deliver_scheduled_messages, fetch_link_preview, expire_stale_calls, cleanup_expired_verifications, cleanup_expired_stories]
     cron_jobs = [
         cron(deliver_scheduled_messages, second={0}, run_at_startup=True),
         cron(expire_stale_calls, second={0, 30}),
         cron(cleanup_expired_verifications, hour={3}, minute={0}, second={0}),
+        cron(cleanup_expired_stories, hour={4}, minute={0}, second={0}),
     ]
     max_jobs = 10
     job_timeout = 300
