@@ -24,6 +24,8 @@ class ChatMember(Base):
 
     role = Column(Enum(MemberRole), nullable=False, default=MemberRole.member, server_default="member")
     joined_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # Архив — per-user: чат скрыт из основного списка, доставка не трогается
+    archived_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="chats")
     chat = relationship("Chat", back_populates="members")

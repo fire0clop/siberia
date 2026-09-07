@@ -87,6 +87,7 @@ async def get_chats(
         data = ChatOut.model_validate(chat).model_dump()
         data["draft_text"] = drafts.get(chat.id)
         e = enriched.get(chat.id, {})
+        data["is_archived"] = e.get("is_archived", False)
         data["unread_count"] = e.get("unread_count", 0)
         data["last_message"] = e.get("last_message")
         peer = e.get("peer")
@@ -216,6 +217,47 @@ async def list_chat_messages(
         before_id=before_id,
         after_id=after_id,
     )
+
+
+@router.post("/{chat_id}/archive", status_code=200)
+async def archive_chat(
+    chat_id: int,
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Архив — per-user: чат скрывается из основного списка, доставка не трогается."""
+    from models.chat_member import ChatMember as _CM
+    user = current["user"]
+    result = await db.execute(
+        select(_CM).where(_CM.chat_id == chat_id, _CM.user_id == user.id)
+    )
+    member = result.scalars().first()
+    if member is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Access denied")
+    member.archived_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"detail": "Chat archived"}
+
+
+@router.delete("/{chat_id}/archive", status_code=200)
+async def unarchive_chat(
+    chat_id: int,
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from models.chat_member import ChatMember as _CM
+    user = current["user"]
+    result = await db.execute(
+        select(_CM).where(_CM.chat_id == chat_id, _CM.user_id == user.id)
+    )
+    member = result.scalars().first()
+    if member is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Access denied")
+    member.archived_at = None
+    await db.commit()
+    return {"detail": "Chat unarchived"}
 
 
 @router.post("/{chat_id}/mute", status_code=200)

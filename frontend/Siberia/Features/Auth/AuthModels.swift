@@ -212,6 +212,8 @@ struct ChatSummary: Codable, Identifiable, Equatable {
 	let syncSeq:   Int
 	let createdAt: String
 	let unreadCount: Int?
+	/// Архив per-user (nil у старого бэка = не в архиве)
+	let isArchived: Bool?
 	// Nested object: { "last_message": { "text": "...", "created_at": "..." } }
 	let lastMessage: NestedMessage?
 
@@ -397,6 +399,15 @@ struct ChatSyncUpdate: Codable {
 	let event: String
 	let messageId: Int?
 	let createdAt: String?
+}
+
+// MARK: – Chat folders
+
+struct ChatFolderSummary: Codable, Identifiable, Equatable {
+	let id: Int
+	let name: String
+	let position: Int
+	let chatIds: [Int]
 }
 
 // MARK: – Search

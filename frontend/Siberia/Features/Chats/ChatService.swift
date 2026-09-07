@@ -171,6 +171,39 @@ final class ChatService {
 		return try APIClient.shared.decode(MessageSendResult.self, from: data)
 	}
 
+	// MARK: – Archive
+
+	func archiveChat(chatId: Int) async throws {
+		_ = try await APIClient.shared.request(path: "/chats/\(chatId)/archive", method: "POST")
+	}
+
+	func unarchiveChat(chatId: Int) async throws {
+		_ = try await APIClient.shared.request(path: "/chats/\(chatId)/archive", method: "DELETE")
+	}
+
+	// MARK: – Folders
+
+	func listFolders() async throws -> [ChatFolderSummary] {
+		let data = try await APIClient.shared.request(path: "/folders", method: "GET")
+		return try APIClient.shared.decode([ChatFolderSummary].self, from: data)
+	}
+
+	func createFolder(name: String) async throws -> ChatFolderSummary {
+		let body = try JSONSerialization.data(withJSONObject: ["name": name])
+		let data = try await APIClient.shared.request(path: "/folders", method: "POST", body: body)
+		return try APIClient.shared.decode(ChatFolderSummary.self, from: data)
+	}
+
+	func deleteFolder(id: Int) async throws {
+		_ = try await APIClient.shared.request(path: "/folders/\(id)", method: "DELETE")
+	}
+
+	func setFolderChats(id: Int, chatIds: [Int]) async throws -> ChatFolderSummary {
+		let body = try JSONSerialization.data(withJSONObject: ["chat_ids": chatIds])
+		let data = try await APIClient.shared.request(path: "/folders/\(id)/chats", method: "PUT", body: body)
+		return try APIClient.shared.decode(ChatFolderSummary.self, from: data)
+	}
+
 	func editMessage(messageId: Int, newText: String, entities: [MessageEntity]? = nil) async throws -> ChatMessage {
 		let body = try encoder().encode(MessagePatchBody(content: newText, entities: entities))
 		let data = try await APIClient.shared.request(

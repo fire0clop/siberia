@@ -21,6 +21,15 @@ struct ChatsView: View {
 	@State private var showGlobalSearch = false
 	@State private var pendingChatRoute: ChatRoute?
 	@State private var searchText   = ""
+
+	// Фильтры/папки (Sprint 4: архив и папки)
+	enum ChatFilter: Hashable {
+		case all, personal, groups, channels, archive, folder(Int)
+	}
+	@State private var selectedFilter: ChatFilter = .all
+	@State private var folders: [ChatFolderSummary] = []
+	@State private var showNewFolderAlert = false
+	@State private var newFolderName = ""
 	@State private var navPath      = NavigationPath()
 	@State private var previewChat: ChatSummary? = nil
 
@@ -58,8 +67,25 @@ struct ChatsView: View {
 	private var baseChats: [ChatSummary] {
 		// Раньше отфильтровывали чаты без сообщений — но это значит что только что
 		// созданный чат не виден до отправки первого сообщения. Теперь показываем все.
-		chats
+		let notArchived = chats.filter { !($0.isArchived ?? false) }
+		switch selectedFilter {
+		case .all:
+			return notArchived
+		case .personal:
+			return notArchived.filter { ($0.type ?? "private") == "private" || $0.type == "saved" }
+		case .groups:
+			return notArchived.filter { $0.type == "group" }
+		case .channels:
+			return notArchived.filter { $0.type == "channel" }
+		case .archive:
+			return chats.filter { $0.isArchived ?? false }
+		case .folder(let fid):
+			let ids = Set(folders.first(where: { $0.id == fid })?.chatIds ?? [])
+			return notArchived.filter { ids.contains($0.id) }
+		}
 	}
+
+	private var archivedCount: Int { chats.filter { $0.isArchived ?? false }.count }
 
 	private var visibleChats: [ChatSummary] {
 		guard !searchText.isEmpty else { return baseChats }
@@ -74,16 +100,23 @@ struct ChatsView: View {
 
 	var body: some View {
 		NavigationStack(path: $navPath) {
-			Group {
-				if isLoading && chats.isEmpty {
-					ChatsSkeletonView()
-				} else if !searchText.isEmpty && visibleChats.isEmpty {
-					ContentUnavailableView.search(text: searchText)
-						.frame(maxWidth: .infinity, maxHeight: .infinity)
-				} else if baseChats.isEmpty {
-					emptyStateView
-				} else {
-					chatList
+			VStack(spacing: 0) {
+				filterBar
+				Group {
+					if isLoading && chats.isEmpty {
+						ChatsSkeletonView()
+					} else if !searchText.isEmpty && visibleChats.isEmpty {
+						ContentUnavailableView.search(text: searchText)
+							.frame(maxWidth: .infinity, maxHeight: .infinity)
+					} else if baseChats.isEmpty {
+						if selectedFilter == .all {
+							emptyStateView
+						} else {
+							filterEmptyView
+						}
+					} else {
+						chatList
+					}
 				}
 			}
 			.navigationTitle("Сообщения")
@@ -188,6 +221,116 @@ struct ChatsView: View {
 		.animation(.easeInOut(duration: 0.15), value: previewChat?.id)
 	}
 
+	// MARK: – Filter bar (Все / Личные / Группы / Каналы / папки / Архив)
+
+	private var filterBar: some View {
+		ScrollView(.horizontal, showsIndicators: false) {
+			HStack(spacing: 8) {
+				filterChip("Все", .all)
+				filterChip("Личные", .personal)
+				filterChip("Группы", .groups)
+				filterChip("Каналы", .channels)
+				ForEach(folders) { f in
+					filterChip(f.name, .folder(f.id))
+						.contextMenu {
+							Button(role: .destructive) {
+								Task { await deleteFolder(f) }
+							} label: { Label("Удалить папку", systemImage: "trash") }
+						}
+				}
+				if archivedCount > 0 {
+					filterChip("Архив (\(archivedCount))", .archive)
+				}
+				Button { showNewFolderAlert = true } label: {
+					Image(systemName: "folder.badge.plus")
+						.font(.system(size: 13, weight: .semibold))
+						.padding(.horizontal, 10).padding(.vertical, 6)
+						.background(Capsule().fill(Color(.tertiarySystemFill)))
+				}
+				.buttonStyle(.plain)
+			}
+			.padding(.horizontal, 16).padding(.vertical, 6)
+		}
+		.alert("Новая папка", isPresented: $showNewFolderAlert) {
+			TextField("Название", text: $newFolderName)
+			Button("Создать") { Task { await createFolder() } }
+			Button("Отмена", role: .cancel) { newFolderName = "" }
+		}
+	}
+
+	private func filterChip(_ title: String, _ filter: ChatFilter) -> some View {
+		let selected = selectedFilter == filter
+		return Button {
+			selectedFilter = filter
+		} label: {
+			Text(title)
+				.font(.system(size: 13, weight: selected ? .semibold : .regular))
+				.foregroundStyle(selected ? Color.white : .primary)
+				.padding(.horizontal, 12).padding(.vertical, 6)
+				.background(Capsule().fill(selected ? Color.accentColor : Color(.tertiarySystemFill)))
+		}
+		.buttonStyle(.plain)
+	}
+
+	private var filterEmptyView: some View {
+		VStack(spacing: 10) {
+			Image(systemName: selectedFilter == .archive ? "archivebox" : "folder")
+				.font(.system(size: 42)).foregroundStyle(.secondary.opacity(0.5))
+			Text(selectedFilter == .archive ? "Архив пуст" : "В этой папке пока пусто")
+				.font(.subheadline).foregroundStyle(.secondary)
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+	}
+
+	// MARK: – Archive / folders actions
+
+	private func toggleArchive(_ c: ChatSummary) async {
+		do {
+			if c.isArchived ?? false {
+				try await ChatService.shared.unarchiveChat(chatId: c.id)
+			} else {
+				try await ChatService.shared.archiveChat(chatId: c.id)
+			}
+			await load()
+		} catch {
+			self.error = error.localizedDescription
+		}
+	}
+
+	private func createFolder() async {
+		let name = newFolderName.trimmingCharacters(in: .whitespaces)
+		newFolderName = ""
+		guard !name.isEmpty else { return }
+		do {
+			let f = try await ChatService.shared.createFolder(name: name)
+			folders.append(f)
+			selectedFilter = .folder(f.id)
+		} catch {
+			self.error = error.localizedDescription
+		}
+	}
+
+	private func deleteFolder(_ f: ChatFolderSummary) async {
+		do {
+			try await ChatService.shared.deleteFolder(id: f.id)
+			folders.removeAll { $0.id == f.id }
+			if selectedFilter == .folder(f.id) { selectedFilter = .all }
+		} catch {
+			self.error = error.localizedDescription
+		}
+	}
+
+	private func toggleFolderMembership(_ folder: ChatFolderSummary, chat: ChatSummary) async {
+		var ids = folder.chatIds
+		if ids.contains(chat.id) { ids.removeAll { $0 == chat.id } } else { ids.append(chat.id) }
+		do {
+			let updated = try await ChatService.shared.setFolderChats(id: folder.id, chatIds: ids)
+			if let idx = folders.firstIndex(where: { $0.id == folder.id }) { folders[idx] = updated }
+		} catch {
+			self.error = error.localizedDescription
+		}
+	}
+
 	// MARK: – Chat list
 
 	private var chatList: some View {
@@ -202,6 +345,38 @@ struct ChatsView: View {
 				.listRowBackground(Color.clear)
 				.listRowSeparator(.hidden)
 				.listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+				.swipeActions(edge: .trailing, allowsFullSwipe: false) {
+					Button {
+						Task { await toggleArchive(c) }
+					} label: {
+						Label((c.isArchived ?? false) ? "Из архива" : "Архив",
+						      systemImage: (c.isArchived ?? false) ? "tray.and.arrow.up" : "archivebox")
+					}
+					.tint(.indigo)
+				}
+				.contextMenu {
+					if !folders.isEmpty {
+						Menu {
+							ForEach(folders) { f in
+								Button {
+									Task { await toggleFolderMembership(f, chat: c) }
+								} label: {
+									if f.chatIds.contains(c.id) {
+										Label(f.name, systemImage: "checkmark")
+									} else {
+										Text(f.name)
+									}
+								}
+							}
+						} label: { Label("В папку", systemImage: "folder") }
+					}
+					Button {
+						Task { await toggleArchive(c) }
+					} label: {
+						Label((c.isArchived ?? false) ? "Из архива" : "В архив",
+						      systemImage: "archivebox")
+					}
+				}
 				.simultaneousGesture(
 					LongPressGesture(minimumDuration: 0.45)
 						.onEnded { _ in
@@ -426,7 +601,9 @@ struct ChatsView: View {
 			chats = try await ChatService.shared.listChats()
 			async let m: () = loadMemberNames()
 			async let l: () = loadLastMessages()
+			async let f = (try? ChatService.shared.listFolders()) ?? []
 			await m; await l
+			folders = await f
 			// Persist for next launch
 			ChatCacheService.shared.saveChats(chats)
 			ChatCacheService.shared.saveLastMessages(lastMessages)

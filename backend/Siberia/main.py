@@ -29,6 +29,7 @@ from routes.devices import router as devices_router
 from routes.media import router as media_router
 from routes.channel import router as channel_router
 from routes.call import router as call_router
+from routes.folder import router as folder_router
 
 
 @asynccontextmanager
@@ -109,4 +110,5 @@ app.include_router(devices_router)
 app.include_router(media_router)
 app.include_router(channel_router)
 app.include_router(call_router)
+app.include_router(folder_router)
 app.include_router(ws_router)

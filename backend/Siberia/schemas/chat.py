@@ -78,6 +78,7 @@ class ChatOut(BaseModel):
     is_public: bool = False
     subscribers_count: int = 0
     # Обогащение для списка чатов (GET /chats) — чтобы клиент не делал N+1
+    is_archived: bool = False
     unread_count: int = 0
     last_message: Optional[ChatLastMessage] = None
     peer: Optional[UserOut] = None  # собеседник в личном чате

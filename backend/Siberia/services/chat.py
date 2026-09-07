@@ -221,9 +221,22 @@ async def enrich_chats_for_list(db: AsyncSession, viewer_id: int, chats: list) -
     from sqlalchemy import func as _func
 
     chat_ids = [c.id for c in chats]
-    result: dict[int, dict] = {cid: {"unread_count": 0, "last_message": None, "peer": None} for cid in chat_ids}
+    result: dict[int, dict] = {
+        cid: {"unread_count": 0, "last_message": None, "peer": None, "is_archived": False}
+        for cid in chat_ids
+    }
     if not chat_ids:
         return result
+
+    # 0) архив per-user — из членства
+    arch_rows = await db.execute(
+        select(_ChatMember.chat_id, _ChatMember.archived_at).where(
+            _ChatMember.user_id == viewer_id,
+            _ChatMember.chat_id.in_(chat_ids),
+        )
+    )
+    for cid, archived_at in arch_rows.all():
+        result[cid]["is_archived"] = archived_at is not None
 
     # 1) unread per chat: непрочитанные статусы viewer'а, только отправленные
     #    и не удалённые сообщения (scheduled статусов больше не создаёт, но

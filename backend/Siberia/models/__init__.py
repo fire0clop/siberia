@@ -17,3 +17,4 @@ from .email_verification import EmailVerification
 from .login_event import LoginEvent
 from .message_edit_history import MessageEditHistory
 from .call import Call, CallType, CallStatus
+from .chat_folder import ChatFolder, ChatFolderItem
