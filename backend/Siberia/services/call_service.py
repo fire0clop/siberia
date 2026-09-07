@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.future import select
@@ -57,6 +57,54 @@ def _serialize_user_short(u: User) -> dict:
     }
 
 
+# Сколько секунд звонок может висеть в ringing, прежде чем считается missed.
+# Без таймаута один зависший ringing (упавшее приложение звонящего) навсегда
+# блокировал звонки обоим участникам — initiate_call отвечал 409.
+RING_TIMEOUT_SECONDS = 60
+
+
+async def expire_stale_ringing_calls(
+    db: AsyncSession,
+    user_ids: list[int] | None = None,
+) -> list[Call]:
+    """Переводит протухшие ringing-звонки в missed и шлёт call_ended обеим сторонам.
+
+    user_ids=None — глобальная зачистка (cron в ARQ-воркере);
+    список id — точечная, перед проверкой занятости в initiate_call.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=RING_TIMEOUT_SECONDS)
+
+    stmt = (
+        select(Call)
+        .where(Call.status == CallStatus.ringing, Call.started_at < cutoff)
+        .with_for_update(skip_locked=True)
+    )
+    if user_ids:
+        stmt = stmt.where(
+            (Call.caller_id.in_(user_ids)) | (Call.callee_id.in_(user_ids))
+        )
+
+    result = await db.execute(stmt)
+    stale = list(result.scalars().all())
+    if not stale:
+        return []
+
+    for call in stale:
+        call.status = CallStatus.missed
+        call.ended_at = now
+    await db.commit()
+
+    for call in stale:
+        for uid in (call.caller_id, call.callee_id):
+            await _push_to_user(uid, {
+                "type": "call_ended",
+                "call_id": call.id,
+                "duration_seconds": None,
+            })
+    return stale
+
+
 # ── Initiate ─────────────────────────────────────────────────────────────────
 
 async def initiate_call(
@@ -83,6 +131,10 @@ async def initiate_call(
     )
     if block_check.scalars().first():
         raise HTTPException(status_code=403, detail="Call not allowed")
+
+    # Сначала гасим протухшие ringing — иначе один зависший звонок
+    # блокирует обоих участников навсегда (409 ниже).
+    await expire_stale_ringing_calls(db, [caller_id, callee_id])
 
     # Есть ли уже активный/звонящий вызов с участием любой из сторон?
     active = await db.execute(
@@ -251,8 +303,9 @@ async def end_call(db: AsyncSession, call_id: int, user_id: int) -> Call:
         call.duration_seconds = int((now - call.accepted_at).total_seconds())
         call.status = CallStatus.ended
     elif call.status == CallStatus.ringing:
-        # ended without ever connecting → missed для callee, cancelled для caller
-        call.status = CallStatus.missed if user_id == call.caller_id else CallStatus.declined
+        # ended without ever connecting → caller повесил трубку = cancelled,
+        # callee «завершил» непринятый = declined
+        call.status = CallStatus.cancelled if user_id == call.caller_id else CallStatus.declined
     call.ended_at = now
     await db.commit()
     await db.refresh(call)

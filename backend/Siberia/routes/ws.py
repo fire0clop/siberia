@@ -108,7 +108,7 @@ async def _token_invalid(token: str) -> bool:
     return await is_session_revoked(payload.get("session_id"))
 
 
-async def _recv_with_heartbeat(websocket: WebSocket, token: str):
+async def _recv_with_heartbeat(websocket: WebSocket, user_id: int):
     """
     Ждёт следующий фрейм от клиента.
     Отправляет ping если клиент молчит _PING_INTERVAL секунд.
@@ -143,6 +143,11 @@ async def _recv_with_heartbeat(websocket: WebSocket, token: str):
 
         if data.get("type") == "pong":
             waiting_pong = False
+            # Pong — это тоже признак жизни. Раньше pong съедался здесь и не
+            # доходил до presence_refresh в основном цикле: у молчащего (но
+            # подключённого) клиента ключ ws:conn протухал через 90 секунд,
+            # пользователь выглядел офлайн, и пуши шли полноценными алертами.
+            await presence_refresh(user_id)
             continue
 
         return raw  # валидный фрейм — передаём в основной обработчик
@@ -195,7 +200,7 @@ async def websocket_user_inbox(websocket: WebSocket):
 
     try:
         while True:
-            raw = await _recv_with_heartbeat(websocket, token)
+            raw = await _recv_with_heartbeat(websocket, user.id)
             if raw is None:
                 break
 
@@ -302,7 +307,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
 
     try:
         while True:
-            raw = await _recv_with_heartbeat(websocket, token)
+            raw = await _recv_with_heartbeat(websocket, user.id)
             if raw is None:
                 break
 

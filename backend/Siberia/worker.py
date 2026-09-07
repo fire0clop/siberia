@@ -97,6 +97,26 @@ async def deliver_scheduled_messages(ctx: dict) -> None:
         logger.info("Delivered %d scheduled messages", delivered)
 
 
+# ── Expire stale ringing calls ────────────────────────────────────────────────
+
+async def expire_stale_calls(ctx: dict) -> None:
+    """Гасит звонки, зависшие в ringing дольше RING_TIMEOUT_SECONDS.
+
+    Без этого один зависший ringing (упавшее приложение звонящего) навсегда
+    блокировал звонки обоим участникам — initiate_call отвечал 409, а у callee
+    вечно висел входящий.
+    """
+    from services.call_service import expire_stale_ringing_calls
+
+    try:
+        async with async_session_maker() as db:
+            stale = await expire_stale_ringing_calls(db)
+        if stale:
+            logger.info("Expired %d stale ringing calls", len(stale))
+    except Exception as exc:
+        logger.exception("expire_stale_calls failed: %s", exc)
+
+
 # ── Cleanup expired verifications ─────────────────────────────────────────────
 
 async def cleanup_expired_verifications(ctx: dict) -> None:
@@ -123,9 +143,10 @@ async def cleanup_expired_verifications(ctx: dict) -> None:
 
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
-    functions = [deliver_scheduled_messages, cleanup_expired_verifications]
+    functions = [deliver_scheduled_messages, expire_stale_calls, cleanup_expired_verifications]
     cron_jobs = [
         cron(deliver_scheduled_messages, second={0}, run_at_startup=True),
+        cron(expire_stale_calls, second={0, 30}),
         cron(cleanup_expired_verifications, hour={3}, minute={0}, second={0}),
     ]
     max_jobs = 10

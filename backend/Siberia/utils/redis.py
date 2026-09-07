@@ -57,8 +57,15 @@ async def presence_disconnect(user_id: int) -> bool:
 
 
 async def presence_refresh(user_id: int) -> None:
-    """Вызывать при каждом входящем WS-фрейме чтобы не протух TTL."""
-    await redis_client.expire(f"ws:conn:{user_id}", _PRESENCE_TTL)
+    """Вызывать при каждом входящем WS-фрейме (включая pong) чтобы не протух TTL."""
+    key = f"ws:conn:{user_id}"
+    refreshed = await redis_client.expire(key, _PRESENCE_TTL)
+    if not refreshed:
+        # Ключ успел протухнуть (или Redis перезапускался), а соединение живо —
+        # восстанавливаем, иначе EXPIRE по отсутствующему ключу — no-op и
+        # пользователь навсегда «офлайн» при живом сокете.
+        await redis_client.incr(key)
+        await redis_client.expire(key, _PRESENCE_TTL)
 
 
 async def is_online(user_id: int) -> bool:
