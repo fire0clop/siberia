@@ -195,7 +195,8 @@ async def list_chat_messages(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await check_user_in_chat(db, current["user"].id, chat_id)
+    from services.chat import check_can_read_chat
+    await check_can_read_chat(db, current["user"].id, chat_id)
     if around_message_id is not None:
         return await get_messages_around(
             db,

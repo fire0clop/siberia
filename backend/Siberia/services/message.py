@@ -438,12 +438,21 @@ async def soft_delete_message(db: AsyncSession, user_id: int, message_id: int) -
     message = await db.get(Message, message_id)
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
-    if message.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Can only delete own messages")
     if message.deleted_at is not None:
         return
 
     await check_user_in_chat(db, user_id, message.chat_id)
+
+    if message.user_id != user_id:
+        # Модерация: owner/admin группы или канала может удалять чужие
+        # сообщения — раньше удаление было строго авторским.
+        from models.chat_member import ChatMember as _CM, MemberRole as _MR
+        actor = await db.execute(
+            select(_CM).where(_CM.chat_id == message.chat_id, _CM.user_id == user_id)
+        )
+        actor_member = actor.scalars().first()
+        if actor_member is None or actor_member.role not in (_MR.owner, _MR.admin):
+            raise HTTPException(status_code=403, detail="Can only delete own messages")
 
     chat = await lock_chat_row(db, message.chat_id)
     message.deleted_at = datetime.now(timezone.utc)

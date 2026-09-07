@@ -165,10 +165,23 @@ async def pin_message(db: AsyncSession, user_id: int, chat_id: int, message_id: 
     member = result.scalars().first()
     if not member:
         raise HTTPException(status_code=403, detail="Access denied")
-    if member.role not in (MemberRole.admin, MemberRole.owner):
-        raise HTTPException(status_code=403, detail="Only admins and owner can pin messages")
 
     chat = await lock_chat_row(db, chat_id)
+
+    # В личном чате роли только member — закрепить может любой из двоих
+    # (раньше pin в DM был невозможен: требовался admin/owner). В группах
+    # и каналах — по-прежнему только админы.
+    if chat.type != ChatType.private and member.role not in (MemberRole.admin, MemberRole.owner):
+        raise HTTPException(status_code=403, detail="Only admins and owner can pin messages")
+
+    # Сообщение должно существовать и принадлежать ЭТОМУ чату —
+    # раньше можно было закрепить id из любого чужого чата.
+    if message_id is not None:
+        from models.message import Message as _Message
+        msg = await db.get(_Message, message_id)
+        if msg is None or msg.chat_id != chat_id or msg.deleted_at is not None:
+            raise HTTPException(status_code=400, detail="Message not found in this chat")
+
     chat.pinned_message_id = message_id
 
     seq, _ = await log_update_on_locked_chat(
@@ -297,6 +310,26 @@ async def delete_draft(db: AsyncSession, user_id: int, chat_id: int) -> None:
     if draft:
         await db.delete(draft)
         await db.commit()
+
+
+async def check_can_read_chat(db: AsyncSession, user_id: int, chat_id: int):
+    """Читать чат может участник — или кто угодно, если это публичный канал.
+
+    Раньше публичный канал нельзя было даже посмотреть без подписки:
+    GET /chats/{id}/messages требовал членства.
+    """
+    result = await db.execute(
+        select(ChatMember.id).where(
+            ChatMember.user_id == user_id,
+            ChatMember.chat_id == chat_id,
+        )
+    )
+    if result.scalar():
+        return
+    chat = await db.get(Chat, chat_id)
+    if chat is not None and chat.type == ChatType.channel and chat.is_public:
+        return
+    raise HTTPException(status_code=403, detail="Access denied")
 
 
 async def check_user_in_chat(db: AsyncSession, user_id: int, chat_id: int):

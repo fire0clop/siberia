@@ -511,8 +511,16 @@ final class ChatDetailViewModel: ObservableObject {
 
 	// MARK: – Edit / Delete
 
+	/// Может ли текущий пользователь удалить сообщение «у всех»:
+	/// своё — всегда; чужое — если он owner/admin группы или канала.
+	func canDeleteForEveryone(_ m: ChatMessage) -> Bool {
+		guard !isPending(m) else { return false }
+		if isMine(m) { return true }
+		return (isGroup || isChannel) && (myRole == "owner" || myRole == "admin")
+	}
+
 	func deleteMessage(_ m: ChatMessage) async {
-		guard m.userId == currentUserId else { return }
+		guard canDeleteForEveryone(m) else { return }
 		do {
 			try await ChatService.shared.deleteMessage(messageId: m.id)
 			if let idx = messages.firstIndex(where: { $0.id == m.id }) {

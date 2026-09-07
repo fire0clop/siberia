@@ -83,11 +83,13 @@ async def create_group_chat(
 
 
 async def get_chat_detail(db: AsyncSession, chat_id: int, user_id: int) -> Chat:
-    """Return chat only if user is a member."""
-    await _get_member(db, chat_id, user_id)
+    """Return chat if user is a member — or if it's a public channel (preview)."""
     chat = await db.get(Chat, chat_id)
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    if chat.type == ChatType.channel and chat.is_public:
+        return chat  # публичный канал можно смотреть до подписки
+    await _get_member(db, chat_id, user_id)
     return chat
 
 
@@ -315,8 +317,10 @@ async def change_member_role(
 async def generate_invite_link(db: AsyncSession, chat_id: int, actor_id: int) -> str:
     await _require_role(db, chat_id, actor_id, MemberRole.admin)
     chat_obj = await db.get(Chat, chat_id)
-    if not chat_obj or chat_obj.type != ChatType.group:
-        raise HTTPException(status_code=400, detail="Only groups have invite links")
+    # Каналы тоже: раньше требовался type == group, из-за чего
+    # GET /channels/join/{slug} был недостижим, а приватный канал — незаходибельным
+    if not chat_obj or chat_obj.type not in (ChatType.group, ChatType.channel):
+        raise HTTPException(status_code=400, detail="Only groups and channels have invite links")
 
     slug = secrets.token_urlsafe(24)  # ~32 chars
     chat_obj.invite_link = slug
@@ -345,31 +349,44 @@ async def join_by_invite(db: AsyncSession, slug: str, user_id: int) -> Chat:
     if existing.scalars().first():
         return chat_obj  # already member, idempotent
 
-    # Check max_members
-    count_result = await db.execute(
-        select(func.count(ChatMember.id)).where(ChatMember.chat_id == chat_obj.id)
-    )
-    if count_result.scalar() >= chat_obj.max_members:
-        raise HTTPException(status_code=400, detail="Group is full")
+    is_channel = chat_obj.type == ChatType.channel
+
+    if not is_channel:
+        # Лимит участников — только для групп
+        count_result = await db.execute(
+            select(func.count(ChatMember.id)).where(ChatMember.chat_id == chat_obj.id)
+        )
+        if count_result.scalar() >= chat_obj.max_members:
+            raise HTTPException(status_code=400, detail="Group is full")
 
     now = datetime.now(timezone.utc)
-    db.add(ChatMember(chat_id=chat_obj.id, user_id=user_id, role=MemberRole.member, joined_at=now))
+    # В канале пришедший по ссылке — ПОДПИСЧИК (без права постить).
+    # Раньше join_by_invite всегда давал member — в канале это право постить.
+    role = MemberRole.subscriber if is_channel else MemberRole.member
+    db.add(ChatMember(chat_id=chat_obj.id, user_id=user_id, role=role, joined_at=now))
     await db.flush()
 
-    user = await db.get(User, user_id)
-    user_name = user.nickname if user else str(user_id)
-
     locked_chat = await lock_chat_row(db, chat_obj.id)
-    msg = await _create_system_message(db, locked_chat, f"{user_name} joined via invite link")
-
-    seq, _ = await log_update_on_locked_chat(
-        db, locked_chat, ChatUpdateEventType.member_added, msg.id,
-        {"added_user_ids": [user_id], "via_invite": True}
-    )
+    if is_channel:
+        locked_chat.subscribers_count = Chat.subscribers_count + 1
+        seq, _ = await log_update_on_locked_chat(
+            db, locked_chat, ChatUpdateEventType.member_added, None,
+            {"added_user_ids": [user_id], "via_invite": True}
+        )
+        msg_id = None
+    else:
+        user = await db.get(User, user_id)
+        user_name = user.nickname if user else str(user_id)
+        msg = await _create_system_message(db, locked_chat, f"{user_name} joined via invite link")
+        seq, _ = await log_update_on_locked_chat(
+            db, locked_chat, ChatUpdateEventType.member_added, msg.id,
+            {"added_user_ids": [user_id], "via_invite": True}
+        )
+        msg_id = msg.id
     await db.commit()
     await db.refresh(locked_chat)
 
-    env = build_envelope(chat_obj.id, seq, ChatUpdateEventType.member_added, msg.id,
+    env = build_envelope(chat_obj.id, seq, ChatUpdateEventType.member_added, msg_id,
                          {"added_user_ids": [user_id], "via_invite": True})
     await broadcast_envelope(chat_obj.id, env)
     return locked_chat

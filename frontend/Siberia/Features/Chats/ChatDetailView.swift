@@ -852,7 +852,7 @@ struct ChatDetailView: View {
 			Divider()
 			Button(role: .destructive) {
 				deleteTarget = m
-				deleteCanForEveryone = vm.isMine(m) && !vm.isPending(m)
+				deleteCanForEveryone = vm.canDeleteForEveryone(m)
 			} label: {
 				Label("Удалить", systemImage: "trash")
 			}
