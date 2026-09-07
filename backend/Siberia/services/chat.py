@@ -14,6 +14,20 @@ from services.block_service import check_not_blocked
 from services.user_service import _get_privacy, _are_friends
 
 
+async def lock_private_pair(db: AsyncSession, user1: int, user2: int) -> None:
+    """Транзакционный advisory-lock на пару пользователей.
+
+    Сериализует создание DM между одной парой: без него параллельные «первые
+    сообщения» (POST /messages, POST /chats) наперегонки проходили проверку
+    get_private_chat_between → None и создавали несколько дублей одного DM.
+    Лок отпускается автоматически на commit/rollback.
+    """
+    lo, hi = sorted((user1, user2))
+    key = (lo << 32) | (hi & 0xFFFFFFFF)
+    from sqlalchemy import text
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+
 async def get_private_chat_between(
     db: AsyncSession, user1: int, user2: int
 ) -> Chat | None:
@@ -32,7 +46,11 @@ async def get_private_chat_between(
         select(Chat)
         .join(two_member_chats, Chat.id == two_member_chats.c.chat_id)
         .join(ChatMember, ChatMember.chat_id == Chat.id)
-        .where(ChatMember.user_id.in_([user1, user2]))
+        # Только private: двухместная ГРУППА между теми же людьми — не DM
+        .where(
+            ChatMember.user_id.in_([user1, user2]),
+            Chat.type == ChatType.private,
+        )
         .group_by(Chat.id)
         .having(func.count(ChatMember.user_id) == 2)
     )
@@ -90,8 +108,16 @@ async def create_chat(
         if existing:
             return existing
 
-        # New chat: enforce messaging privacy + block check
+        # New chat: enforce messaging privacy + block check.
+        # _check_can_message коммитит (через _get_privacy), поэтому advisory-lock
+        # берём ПОСЛЕ него и держим до commit создания — иначе конкурентные
+        # POST /chats плодили дубли одного DM (см. lock_private_pair).
         await _check_can_message(db, creator_id, other_id)
+
+        await lock_private_pair(db, creator_id, other_id)
+        existing = await get_private_chat_between(db, creator_id, other_id)
+        if existing:
+            return existing
 
     chat = Chat(title=title)
     db.add(chat)

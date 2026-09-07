@@ -30,13 +30,22 @@ async def invalidate_user_profile(user_id: int) -> None:
 
 
 async def _get_privacy(db: AsyncSession, user_id: int) -> PrivacySetting:
-    """Return existing PrivacySetting or create default row."""
+    """Return existing PrivacySetting or create default row.
+
+    Создание — через ON CONFLICT DO NOTHING: несколько параллельных запросов
+    (например, конкурентные отправки сообщений одному получателю) наперегонки
+    создавали одну и ту же строку и ловили UniqueViolation → 500.
+    """
     ps = await db.get(PrivacySetting, user_id)
     if ps is None:
-        ps = PrivacySetting(user_id=user_id)
-        db.add(ps)
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        await db.execute(
+            pg_insert(PrivacySetting)
+            .values(user_id=user_id)
+            .on_conflict_do_nothing(index_elements=["user_id"])
+        )
         await db.commit()
-        await db.refresh(ps)
+        ps = await db.get(PrivacySetting, user_id)
     return ps
 
 

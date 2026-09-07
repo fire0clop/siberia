@@ -57,12 +57,23 @@ async def _add_statuses_for_new_message(
 
 
 async def get_or_create_private_chat(db: AsyncSession, sender_id: int, recipient_id: int):
+    from services.chat import lock_private_pair
+
     chat = await get_private_chat_between(db, sender_id, recipient_id)
     if chat:
         return chat
 
-    # New chat: enforce messaging privacy + block check
+    # New chat: enforce messaging privacy + block check.
+    # ВАЖНО: _check_can_message коммитит (через _get_privacy), что сняло бы
+    # advisory-lock, поэтому лок берём ПОСЛЕ него — и держим непрерывно до
+    # commit создания чата. Конкурентные «первые сообщения» иначе плодили дубли.
     await _check_can_message(db, sender_id, recipient_id)
+
+    await lock_private_pair(db, sender_id, recipient_id)
+    # Повторная проверка под локом: пока мы ждали, DM мог создать другой запрос
+    chat = await get_private_chat_between(db, sender_id, recipient_id)
+    if chat:
+        return chat
 
     chat = Chat(title=None)
     db.add(chat)
