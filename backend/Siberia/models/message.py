@@ -54,6 +54,10 @@ class Message(Base):
     # offset/length — в UTF-16 code units (общий знаменатель Swift/Python)
     text_entities = Column(JSONB, nullable=True)
 
+    # OG-превью первой ссылки: {url,title,description,image_url,site_name}|null.
+    # Заполняется асинхронно ARQ-задачей fetch_link_preview.
+    link_preview = Column(JSONB, nullable=True)
+
     @property
     def entities(self):
         """Alias для pydantic from_attributes (API-поле называется entities)."""

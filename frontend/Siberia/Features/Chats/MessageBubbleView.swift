@@ -72,6 +72,7 @@ struct MessageBubbleView: View {
 			}
 			VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
 				if let t = m.text, !t.isEmpty { entityText(m, mine: mine) }
+				if let lp = m.linkPreview { linkPreviewCard(lp, mine: mine) }
 				timeRow(m, mine: mine, pending: pending)
 			}
 			.padding(.horizontal, 12)
@@ -534,6 +535,61 @@ struct MessageBubbleView: View {
 		if let d = Self.isoFull.date(from: iso) { return Self.timeFmt.string(from: d) }
 		if let d = ISO8601DateFormatter().date(from: iso) { return Self.timeFmt.string(from: d) }
 		return ""
+	}
+
+	// MARK: – Link preview card
+
+	@ViewBuilder
+	private func linkPreviewCard(_ lp: LinkPreview, mine: Bool) -> some View {
+		let accentBar = mine ? Color.white.opacity(0.7) : ChatDetailView.accent
+		Button {
+			if let s = lp.url, let url = URL(string: s) {
+				UIApplication.shared.open(url)
+			}
+		} label: {
+			HStack(alignment: .top, spacing: 8) {
+				RoundedRectangle(cornerRadius: 1.5)
+					.fill(accentBar)
+					.frame(width: 3)
+				VStack(alignment: .leading, spacing: 3) {
+					if let site = lp.siteName, !site.isEmpty {
+						Text(site)
+							.font(.caption2.weight(.semibold))
+							.foregroundStyle(mine ? Color.white.opacity(0.85) : ChatDetailView.accent)
+							.lineLimit(1)
+					}
+					if let title = lp.title, !title.isEmpty {
+						Text(title)
+							.font(.caption.weight(.semibold))
+							.foregroundStyle(mine ? Color.white : .primary)
+							.lineLimit(2)
+					}
+					if let desc = lp.description, !desc.isEmpty {
+						Text(desc)
+							.font(.caption)
+							.foregroundStyle(mine ? Color.white.opacity(0.8) : .secondary)
+							.lineLimit(3)
+					}
+					if let img = lp.imageUrl, let imgURL = URL(string: img) {
+						AsyncImage(url: imgURL) { ph in
+							if case .success(let image) = ph {
+								image.resizable()
+									.scaledToFill()
+									.frame(maxWidth: 220, maxHeight: 120)
+									.clipShape(RoundedRectangle(cornerRadius: 6))
+							}
+						}
+					}
+				}
+			}
+			.padding(6)
+			.background(
+				RoundedRectangle(cornerRadius: 8)
+					.fill(mine ? Color.white.opacity(0.12) : Color(.systemFill).opacity(0.5))
+			)
+			.frame(maxWidth: 240, alignment: .leading)
+		}
+		.buttonStyle(.plain)
 	}
 
 	// MARK: – Rich text: entities (bold/italic/spoiler…) + подсветка @упоминаний

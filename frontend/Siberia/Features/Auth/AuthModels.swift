@@ -299,6 +299,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 	/// Разметка текста (bold/italic/spoiler…); var с дефолтом — чтобы
 	/// существующие memberwise-вызовы продолжали компилироваться
 	var entities: [MessageEntity]? = nil
+	/// OG-превью первой ссылки (заполняется бэком асинхронно)
+	var linkPreview: LinkPreview? = nil
 
 	var isDeleted: Bool { deleted ?? (deletedAt != nil) }
 	var hasMedia: Bool { mediaId != nil }
@@ -317,9 +319,17 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 			forwardedFromUserId: forwardedFromUserId,
 			forwardedFromChatId: forwardedFromChatId,
 			mentionUserIds: mentionUserIds, reactions: reactions,
-			type: type, entities: entities
+			type: type, entities: entities, linkPreview: linkPreview
 		)
 	}
+}
+
+struct LinkPreview: Codable, Equatable, Hashable {
+	let url: String?
+	let title: String?
+	let description: String?
+	let imageUrl: String?
+	let siteName: String?
 }
 
 struct MessageSendBody: Encodable {

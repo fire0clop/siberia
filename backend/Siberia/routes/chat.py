@@ -176,6 +176,7 @@ async def send_chat_message(
             "forwarded_from_chat_id": msg.forwarded_from_chat_id,
             "mention_user_ids": msg.mention_user_ids,
             "entities": msg.text_entities,
+            "link_preview": msg.link_preview,
             "reactions": None,
             "send_at": msg.send_at,
             "created_at": msg.created_at,

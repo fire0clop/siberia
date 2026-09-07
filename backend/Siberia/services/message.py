@@ -373,6 +373,13 @@ async def create_message(
         )
         await broadcast_envelope(chat_id, env)
 
+        # Link preview: первая ссылка в тексте → асинхронная OG-задача в ARQ
+        from services.link_preview import extract_first_url
+        _preview_url = extract_first_url(text)
+        if _preview_url:
+            from utils.arq_pool import enqueue_job as _enqueue
+            asyncio.create_task(_enqueue("fetch_link_preview", message.id, _preview_url))
+
         from services.push_dispatcher import dispatch_push_for_message
         from models.user import User as _User
         _sender = await db.get(_User, user_id)

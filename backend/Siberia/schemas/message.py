@@ -71,6 +71,7 @@ class MessageOut(BaseModel):
     forwarded_from_chat_id: Optional[int] = None
     mention_user_ids: Optional[list[int]] = None
     entities: Optional[list[MessageEntity]] = None
+    link_preview: Optional[dict] = None
     reactions: Optional[dict[str, int]] = None
     send_at: Optional[datetime] = None
     created_at: datetime

@@ -114,6 +114,46 @@ async def deliver_scheduled_messages(ctx: dict) -> None:
         logger.info("Delivered %d scheduled messages", delivered)
 
 
+# ── Link preview (OG-теги) ────────────────────────────────────────────────────
+
+async def fetch_link_preview(ctx: dict, message_id: int, url: str) -> None:
+    """Скачивает OG-превью первой ссылки сообщения и рассылает его в комнату.
+
+    Ставится из create_message. SSRF-защита и кеш — в services/link_preview.
+    Событие не пишется в ChatUpdate-лог: офлайн-клиенты получат превью при
+    следующей загрузке истории, онлайн — по лёгкому событию link_preview.
+    """
+    import json as _json
+
+    from models.message import Message
+    from services.link_preview import build_preview_cached
+    from utils.redis import publish
+
+    try:
+        preview = await build_preview_cached(url)
+        if not preview:
+            return
+
+        async with async_session_maker() as db:
+            msg = await db.get(Message, message_id)
+            if msg is None or msg.deleted_at is not None:
+                return
+            msg.link_preview = preview
+            chat_id = msg.chat_id
+            await db.commit()
+
+        await publish(f"chat:{chat_id}", _json.dumps({
+            "v": 1,
+            "type": "link_preview",
+            "event": "link_preview",
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "payload": preview,
+        }))
+    except Exception as exc:
+        logger.exception("fetch_link_preview failed msg=%d: %s", message_id, exc)
+
+
 # ── Expire stale ringing calls ────────────────────────────────────────────────
 
 async def expire_stale_calls(ctx: dict) -> None:
@@ -160,7 +200,7 @@ async def cleanup_expired_verifications(ctx: dict) -> None:
 
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
-    functions = [deliver_scheduled_messages, expire_stale_calls, cleanup_expired_verifications]
+    functions = [deliver_scheduled_messages, fetch_link_preview, expire_stale_calls, cleanup_expired_verifications]
     cron_jobs = [
         cron(deliver_scheduled_messages, second={0}, run_at_startup=True),
         cron(expire_stale_calls, second={0, 30}),

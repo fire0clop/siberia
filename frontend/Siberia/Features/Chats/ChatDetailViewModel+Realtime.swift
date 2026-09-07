@@ -178,6 +178,19 @@ extension ChatDetailViewModel {
 				isPartnerOnline = online
 			}
 
+		case "link_preview":
+			if let msgId = intVal(obj["message_id"]),
+			   let payload = obj["payload"] as? [String: Any],
+			   let idx = messages.firstIndex(where: { $0.id == msgId }) {
+				messages[idx].linkPreview = LinkPreview(
+					url: payload["url"] as? String,
+					title: payload["title"] as? String,
+					description: payload["description"] as? String,
+					imageUrl: payload["image_url"] as? String,
+					siteName: payload["site_name"] as? String
+				)
+			}
+
 		case "read_receipt":
 			if let msgId = intVal(obj["message_id"]) {
 				let readerId = intVal(obj["user_id"])
