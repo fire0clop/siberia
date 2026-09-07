@@ -37,6 +37,31 @@ async def _validate_reply_in_chat(
         raise HTTPException(status_code=400, detail="Invalid reply_to_message_id")
 
 
+async def build_message_new_payload(db: AsyncSession, message: Message) -> dict:
+    """Единый payload для конверта message_new — и в live-отправке, и в воркере.
+
+    Раньше воркер слал payload={} для scheduled-сообщений, и клиент показывал
+    пустое сообщение (H-6). Теперь обе ветки строят одинаковую нагрузку.
+    """
+    media_type = None
+    if message.media_id:
+        from models.media import Media as _Media
+        m = await db.get(_Media, message.media_id)
+        media_type = m.type.value if m else None
+    return {
+        "user_id": message.user_id,
+        "text": message.text,
+        "media_id": str(message.media_id) if message.media_id else None,
+        "media_type": media_type,
+        "client_message_id": str(message.client_message_id) if message.client_message_id else None,
+        "reply_to_message_id": message.reply_to_message_id,
+        "forwarded_from_message_id": message.forwarded_from_message_id,
+        "mention_user_ids": message.mention_user_ids,
+        "send_at": None,
+        "created_at": message.created_at.isoformat() if message.created_at else None,
+    }
+
+
 async def _add_statuses_for_new_message(
     db: AsyncSession, message_id: int, chat_id: int, sender_id: int
 ):
@@ -260,8 +285,11 @@ async def create_message(
 
     if not is_scheduled:
         chat.last_message_id = message.id
-
-    await _add_statuses_for_new_message(db, message.id, chat_id, user_id)
+        # Статусы (unread) создаём ТОЛЬКО для уже отправленных сообщений.
+        # Раньше их получали и scheduled-сообщения → они считались непрочитанными
+        # в badge/списке чатов ещё до отправки (H-6). Для scheduled статусы
+        # создаёт воркер в момент доставки.
+        await _add_statuses_for_new_message(db, message.id, chat_id, user_id)
 
     _media_type = None
     if media_id:

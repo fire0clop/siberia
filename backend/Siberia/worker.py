@@ -36,6 +36,7 @@ async def deliver_scheduled_messages(ctx: dict) -> None:
     from models.user import User
     from models.chat_update import ChatUpdateEventType
     from services.sync_engine import lock_chat_row, log_update_on_locked_chat, build_envelope, broadcast_envelope
+    from services.message import _add_statuses_for_new_message, build_message_new_payload
     from services.push_dispatcher import dispatch_push_for_message
 
     # Atomic claim — guarantees at-most-once delivery across multiple workers
@@ -72,13 +73,18 @@ async def deliver_scheduled_messages(ctx: dict) -> None:
                 locked_chat = await lock_chat_row(db, msg.chat_id)
                 locked_chat.last_message_id = msg.id
 
+                # Статусы (unread) создаются в момент доставки, а не планирования —
+                # иначе получатели видят непрочитанное до отправки (H-6).
+                await _add_statuses_for_new_message(db, msg.id, msg.chat_id, msg.user_id)
+
+                payload = await build_message_new_payload(db, msg)
                 seq, _ = await log_update_on_locked_chat(
-                    db, locked_chat, ChatUpdateEventType.message_new, msg.id, {}
+                    db, locked_chat, ChatUpdateEventType.message_new, msg.id, payload
                 )
                 await db.commit()
 
                 # Broadcast and push are best-effort; failures don't need rollback
-                env = build_envelope(msg.chat_id, seq, ChatUpdateEventType.message_new, msg.id, {})
+                env = build_envelope(msg.chat_id, seq, ChatUpdateEventType.message_new, msg.id, payload)
                 await broadcast_envelope(msg.chat_id, env)
 
                 asyncio.create_task(dispatch_push_for_message(

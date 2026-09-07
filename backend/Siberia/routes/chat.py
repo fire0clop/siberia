@@ -78,10 +78,19 @@ async def get_chats(
         for d in draft_result.scalars().all():
             drafts[d.chat_id] = d.text
 
+    from services.chat import enrich_chats_for_list
+    from schemas.user import UserOut
+    enriched = await enrich_chats_for_list(db, user.id, chats)
+
     out = []
     for chat in chats:
         data = ChatOut.model_validate(chat).model_dump()
         data["draft_text"] = drafts.get(chat.id)
+        e = enriched.get(chat.id, {})
+        data["unread_count"] = e.get("unread_count", 0)
+        data["last_message"] = e.get("last_message")
+        peer = e.get("peer")
+        data["peer"] = UserOut(**peer) if peer else None
         out.append(ChatOut(**data))
     return out
 

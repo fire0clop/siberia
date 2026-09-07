@@ -194,6 +194,86 @@ async def get_user_chats(db: AsyncSession, user_id: int):
     return result.scalars().all()
 
 
+async def enrich_chats_for_list(db: AsyncSession, viewer_id: int, chats: list) -> dict[int, dict]:
+    """Батч-обогащение списка чатов: unread, последнее сообщение, собеседник DM.
+
+    Все запросы батчевые (константное число независимо от размера списка),
+    чтобы убрать N+1 на клиенте и reload-шторм. Возвращает chat_id → dict.
+    """
+    from models.message import Message
+    from models.message_status import MessageStatus, MessageStatusEnum
+    from models.chat_member import ChatMember as _ChatMember
+    from models.media import Media as _Media
+    from services.user_service import build_user_out
+    from sqlalchemy import func as _func
+
+    chat_ids = [c.id for c in chats]
+    result: dict[int, dict] = {cid: {"unread_count": 0, "last_message": None, "peer": None} for cid in chat_ids}
+    if not chat_ids:
+        return result
+
+    # 1) unread per chat: непрочитанные статусы viewer'а, только отправленные
+    #    и не удалённые сообщения (scheduled статусов больше не создаёт, но
+    #    фильтр send_at защищает исторические данные).
+    unread_rows = await db.execute(
+        select(Message.chat_id, _func.count())
+        .join(MessageStatus, MessageStatus.message_id == Message.id)
+        .where(
+            Message.chat_id.in_(chat_ids),
+            MessageStatus.user_id == viewer_id,
+            MessageStatus.status != MessageStatusEnum.read,
+            Message.deleted_at.is_(None),
+            Message.send_at.is_(None),
+        )
+        .group_by(Message.chat_id)
+    )
+    for cid, cnt in unread_rows.all():
+        result[cid]["unread_count"] = int(cnt)
+
+    # 2) last message per chat — батчем по chat.last_message_id
+    last_ids = {c.last_message_id: c.id for c in chats if c.last_message_id is not None}
+    if last_ids:
+        msg_rows = await db.execute(
+            select(Message).where(Message.id.in_(list(last_ids.keys())))
+        )
+        media_ids = set()
+        msgs = list(msg_rows.scalars().all())
+        for m in msgs:
+            if m.media_id:
+                media_ids.add(m.media_id)
+        media_types: dict = {}
+        if media_ids:
+            mrows = await db.execute(select(_Media).where(_Media.id.in_(list(media_ids))))
+            for m in mrows.scalars().all():
+                media_types[m.id] = m.type.value
+        for m in msgs:
+            result[m.chat_id]["last_message"] = {
+                "id": m.id,
+                "user_id": m.user_id,
+                "text": None if m.deleted_at else m.text,
+                "media_type": media_types.get(m.media_id) if not m.deleted_at else None,
+                "created_at": m.created_at,
+                "deleted": m.deleted_at is not None,
+            }
+
+    # 3) peer для приватных чатов — батчем участников, затем build_user_out
+    private_ids = [c.id for c in chats if getattr(c.type, "value", c.type) == "private"]
+    if private_ids:
+        member_rows = await db.execute(
+            select(_ChatMember.chat_id, _ChatMember.user_id).where(
+                _ChatMember.chat_id.in_(private_ids),
+                _ChatMember.user_id != viewer_id,
+            )
+        )
+        peer_by_chat = {cid: uid for cid, uid in member_rows.all()}
+        for cid, peer_uid in peer_by_chat.items():
+            peer_user = await db.get(User, peer_uid)
+            if peer_user:
+                result[cid]["peer"] = await build_user_out(db, peer_user, viewer_id=viewer_id)
+
+    return result
+
+
 async def upsert_draft(db: AsyncSession, user_id: int, chat_id: int, text: str) -> None:
     from models.chat_draft import ChatDraft
     await check_user_in_chat(db, user_id, chat_id)

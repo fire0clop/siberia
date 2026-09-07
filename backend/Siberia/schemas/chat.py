@@ -45,6 +45,16 @@ class ChannelCreate(BaseModel):
     is_public: bool = True
 
 
+class ChatLastMessage(BaseModel):
+    """Компактное превью последнего сообщения для списка чатов."""
+    id: int
+    user_id: Optional[int] = None
+    text: Optional[str] = None
+    media_type: Optional[str] = None
+    created_at: Optional[datetime] = None
+    deleted: bool = False
+
+
 class ChatOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -62,3 +72,7 @@ class ChatOut(BaseModel):
     draft_text: Optional[str] = None
     is_public: bool = False
     subscribers_count: int = 0
+    # Обогащение для списка чатов (GET /chats) — чтобы клиент не делал N+1
+    unread_count: int = 0
+    last_message: Optional[ChatLastMessage] = None
+    peer: Optional[UserOut] = None  # собеседник в личном чате
