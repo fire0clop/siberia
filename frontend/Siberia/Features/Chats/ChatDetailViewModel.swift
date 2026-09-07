@@ -52,6 +52,9 @@ final class ChatDetailViewModel: ObservableObject {
 	@Published var scrollToBottomSignal: Int = 0
 	/// Set to a message ID to trigger a scroll-to in ChatDetailView (reset to nil after consuming)
 	@Published var jumpToMessageId: Int? = nil
+	/// После подгрузки старых сообщений (loadMore) — id сообщения, к которому
+	/// нужно вернуть вьюпорт, чтобы он не прыгнул на новую верхушку списка.
+	@Published var restoreScrollToId: Int? = nil
 
 	/// The other participant in a 1-on-1 chat
 	var otherMember: ChatMember? {
@@ -242,9 +245,35 @@ final class ChatDetailViewModel: ObservableObject {
 			hasMoreMessages = batch.count >= 50
 			let existingIds = Set(messages.map(\.id))
 			let fresh = batch.sorted { $0.id < $1.id }.filter { !existingIds.contains($0.id) }
+			guard !fresh.isEmpty else { return }
 			messages = fresh + messages
+			// Возвращаем вьюпорт на бывшую верхнюю границу, иначе после prepend
+			// список прыгает наверх и снова триггерит loadMore (каскад).
+			restoreScrollToId = firstId
 		} catch {
 			self.error = error.localizedDescription
+		}
+	}
+
+	/// После реконнекта: подтягиваем свежие сообщения и правки, НЕ выбрасывая
+	/// уже загруженную вверх историю. Раньше здесь звался loadMessages(), он
+	/// заменял всё последними 50 и терял пролистанное + сбрасывал hasMoreMessages.
+	func reconcileAfterReconnect() async {
+		do {
+			let batch = try await ChatService.shared.messages(chatId: chatId, limit: 50)
+			// upsert по id: свежие правки/удаления в пределах окна применяются,
+			// новые сообщения добавляются, старая история сохраняется.
+			var byId: [Int: ChatMessage] = [:]
+			for m in messages where !isPending(m) { byId[m.id] = m }
+			for m in batch { byId[m.id] = m }
+			var merged = Array(byId.values).sorted { $0.id < $1.id }
+			// Сохраняем неотправленные (pending) сообщения в хвосте
+			let pending = messages.filter { isPending($0) }
+			for p in pending where !merged.contains(where: { $0.id == p.id }) { merged.append(p) }
+			messages = merged
+			ChatCacheService.shared.saveMessages(chatId: chatId, messages: messages)
+		} catch {
+			Log.chat.error("reconcileAfterReconnect failed: \(String(describing: error))")
 		}
 	}
 
@@ -312,6 +341,16 @@ final class ChatDetailViewModel: ObservableObject {
 
 	func runSync() async throws {
 		let r = try await ChatService.shared.sync(chatId: chatId, afterSeq: latestSeq)
+		// Применяем удаления к уже загруженным сообщениям — для этого достаточно
+		// messageId из sync, без запроса деталей. Раньше updates просто
+		// выбрасывались (хранился только latestSeq). Правки/реакции вне окна
+		// подхватывает reconcileAfterReconnect (merge последних 50).
+		for u in r.updates where u.event == "message_delete" {
+			guard let mid = u.messageId,
+			      let idx = messages.firstIndex(where: { $0.id == mid }),
+			      !messages[idx].isDeleted else { continue }
+			messages[idx] = softDeleted(messages[idx])
+		}
 		latestSeq = r.latestSeq
 	}
 

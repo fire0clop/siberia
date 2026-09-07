@@ -42,6 +42,9 @@ struct ChatDetailView: View {
 
 	// Partner profile
 	@State private var showPartnerProfile = false
+	/// Пока не отскроллили вниз при открытии — не даём верхнему триггеру
+	/// подгружать историю (иначе он срабатывает до первой прокрутки и каскадит).
+	@State private var didInitialScroll = false
 
 	// Sheets
 	@State private var editingMessage: ChatMessage?
@@ -511,8 +514,9 @@ struct ChatDetailView: View {
 			ZStack(alignment: .bottomTrailing) {
 				ScrollView {
 					LazyVStack(spacing: 1) {
-						// Load-more trigger at the very top
-						if vm.hasMoreMessages {
+						// Load-more trigger at the very top — только после первой
+						// прокрутки вниз, иначе триггерится на этапе рендера.
+						if vm.hasMoreMessages && didInitialScroll {
 							Color.clear.frame(height: 1)
 								.onAppear { Task { await vm.loadMore() } }
 						}
@@ -562,6 +566,14 @@ struct ChatDetailView: View {
 						vm.jumpToMessageId = nil
 					}
 				}
+				.onChange(of: vm.restoreScrollToId) { _, id in
+					// После prepend старых сообщений держим вьюпорт на прежней
+					// верхней границе — без анимации, чтобы не было прыжка.
+					guard let id else { return }
+					var tx = Transaction(); tx.disablesAnimations = true
+					withTransaction(tx) { proxy.scrollTo("msg_\(id)", anchor: .top) }
+					vm.restoreScrollToId = nil
+				}
 				.scrollDismissesKeyboard(.interactively)
 				.onTapGesture {
 					UIApplication.shared.sendAction(
@@ -576,6 +588,9 @@ struct ChatDetailView: View {
 					// Give layout time to render before scrolling to bottom
 					try? await Task.sleep(nanoseconds: 80_000_000)
 					proxy.scrollTo("__bottom__", anchor: .bottom)
+					// Разрешаем подгрузку истории только теперь
+					try? await Task.sleep(nanoseconds: 120_000_000)
+					didInitialScroll = true
 				}
 
 				if vm.showScrollToBottom {

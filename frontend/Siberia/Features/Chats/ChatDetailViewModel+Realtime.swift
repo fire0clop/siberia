@@ -76,8 +76,11 @@ extension ChatDetailViewModel {
 				Task { @MainActor [weak self] in
 					guard let self else { return }
 					try? await self.runSync()
-					await self.loadMessages()
+					// reconcile, а не loadMessages: не выбрасываем пролистанную вверх
+					// историю и не сбрасываем пагинацию.
+					await self.reconcileAfterReconnect()
 					await self.flushPendingQueue()
+					await self.markRead()
 				}
 			}
 		)
