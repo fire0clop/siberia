@@ -21,6 +21,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # AOF: без него рестарт Redis терял свежие revoked_session:* ключи,
+    # и отозванные access-токены оживали до истечения их TTL.
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     ports:

@@ -18,14 +18,14 @@ def _send_sync(to: str, subject: str, body_html: str) -> None:
     msg.attach(MIMEText(body_html, "html"))
 
     if settings.SMTP_TLS:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
             smtp.ehlo()
             smtp.starttls()
             if settings.SMTP_USER and settings.SMTP_PASSWORD:
                 smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             smtp.sendmail(settings.SMTP_FROM, to, msg.as_string())
     else:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
             if settings.SMTP_USER and settings.SMTP_PASSWORD:
                 smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             smtp.sendmail(settings.SMTP_FROM, to, msg.as_string())

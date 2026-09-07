@@ -12,7 +12,7 @@ from models.user import User
 from models.chat_member import ChatMember
 from services.message import create_message, mark_read
 from utils.jwt import decode_token
-from utils.redis import publish, subscribe, presence_connect, presence_disconnect, presence_refresh, is_session_revoked, typing_can_publish
+from utils.redis import publish, subscribe, presence_connect, presence_disconnect, presence_refresh, typing_can_publish
 from utils.ws_manager import ws_manager
 from services.user_service import update_last_seen
 from services.presence_broadcast import broadcast_presence
@@ -55,7 +55,10 @@ async def _get_user_from_token(token: str, db):
         return None
     if payload.get("type") != "access":
         return None
-    user_id = int(payload.get("sub"))
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        return None
     result = await db.execute(
         select(User).where(User.id == user_id, User.deleted_at.is_(None))
     )
@@ -98,14 +101,16 @@ def _token_expired(token: str) -> bool:
 
 
 async def _token_invalid(token: str) -> bool:
-    """True если токен истёк ИЛИ сессия отозвана (revoked в Redis)."""
+    """True если токен истёк ИЛИ сессия отозвана (Redis с fallback'ом на БД)."""
     if _token_expired(token):
         return True
     try:
         payload = decode_token(token)
     except Exception:
         return True
-    return await is_session_revoked(payload.get("session_id"))
+    from utils.deps import check_session_revoked
+    async with async_session_maker() as _db:
+        return await check_session_revoked(_db, payload.get("session_id"))
 
 
 async def _recv_with_heartbeat(websocket: WebSocket, user_id: int):
@@ -193,8 +198,17 @@ async def websocket_user_inbox(websocket: WebSocket):
             async for msg in pubsub.listen():
                 if msg["type"] == "message":
                     await websocket.send_text(msg["data"])
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
+            # Падение подписки (Redis-хикап) без закрытия сокета оставляло
+            # «зомби»: соединение живо, но событий больше не приходит и клиент
+            # не переподключается. Закрываем — клиент сделает reconnect + sync.
             logger.exception("WS /me pubsub listener failed: %s", exc)
+            try:
+                await websocket.close(code=1011)
+            except Exception:
+                pass
 
     listener_task = asyncio.create_task(_listener())
 
@@ -300,8 +314,15 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int):
             async for msg in pubsub.listen():
                 if msg["type"] == "message":
                     await websocket.send_text(msg["data"])
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
+            # См. комментарий в /ws/me — зомби-сокет без закрытия
             logger.exception("WS /{chat_id} pubsub listener failed: %s", exc)
+            try:
+                await websocket.close(code=1011)
+            except Exception:
+                pass
 
     listener_task = asyncio.create_task(_listener())
 

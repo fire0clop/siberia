@@ -2,9 +2,23 @@ import redis.asyncio as redis
 
 from config import settings
 
+# Основной клиент — С таймаутами: без них зависший Redis (раздел сети)
+# вешал каждый авторизованный запрос на is_session_revoked навсегда.
 redis_client = redis.from_url(
     settings.REDIS_URL,
     decode_responses=True,
+    socket_timeout=3,
+    socket_connect_timeout=3,
+    health_check_interval=30,
+)
+
+# Отдельный клиент для pubsub — БЕЗ socket_timeout: listen() блокируется
+# в ожидании сообщений, и общий 3-секундный таймаут ронял бы простаивающие
+# WS-подписки каждые 3 секунды.
+_redis_pubsub_client = redis.from_url(
+    settings.REDIS_URL,
+    decode_responses=True,
+    socket_connect_timeout=3,
 )
 
 
@@ -13,7 +27,7 @@ async def publish(channel: str, message: str):
 
 
 async def subscribe(channel: str):
-    pubsub = redis_client.pubsub()
+    pubsub = _redis_pubsub_client.pubsub()
     await pubsub.subscribe(channel)
     return pubsub
 
@@ -27,6 +41,7 @@ async def redis_ping() -> bool:
 
 async def close_redis():
     await redis_client.aclose()
+    await _redis_pubsub_client.aclose()
 
 
 # ── Online presence ───────────────────────────────────────────────────────────
