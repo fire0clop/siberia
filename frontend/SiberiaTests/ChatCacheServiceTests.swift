@@ -146,11 +146,13 @@ final class ChatCacheServiceTests: XCTestCase {
 	}
 
 	private func makeChatSummary(id: Int, title: String) -> ChatSummary {
-		ChatSummary(
-			id: id, type: "dm", title: title,
-			lastMessage: nil, unreadCount: 0,
-			avatarMediaId: nil, draftText: nil,
-			pinnedMessageId: nil, syncSeq: 0
-		)
+		// ChatSummary — Codable без кастомного init; строим через JSON, чтобы
+		// не зависеть от memberwise-инициализатора со всеми полями.
+		let json = """
+		{"id": \(id), "title": "\(title)", "type": "dm", "sync_seq": 0, "created_at": "2025-01-01T00:00:00Z"}
+		"""
+		let dec = JSONDecoder()
+		dec.keyDecodingStrategy = .convertFromSnakeCase
+		return try! dec.decode(ChatSummary.self, from: Data(json.utf8))
 	}
 }
