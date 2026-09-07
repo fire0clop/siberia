@@ -44,8 +44,11 @@ class Settings(BaseSettings):
     # True = sandbox (TestFlight/Simulator), False = production
     APNS_SANDBOX: bool = True
 
-    # ── FCM (Android push) ────────────────────────────────────────────────────
-    # Legacy Server Key из Firebase Console → Project Settings → Cloud Messaging
+    # ── FCM (Android push) — HTTP v1 API ─────────────────────────────────────
+    # Legacy Server Key отключён Google в 2024. Теперь нужен сервис-аккаунт:
+    FCM_PROJECT_ID: str = ""        # id проекта Firebase
+    FCM_CREDENTIALS_PATH: str = ""  # путь к JSON сервис-аккаунта
+    # Deprecated (оставлено для обратной совместимости .env, больше не используется)
     FCM_SERVER_KEY: str = ""
 
     # ── S3-compatible object storage (Cloudflare R2 / AWS S3) ────────────────
