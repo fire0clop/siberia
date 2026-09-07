@@ -161,6 +161,23 @@ async def send_chat_message(
     db: AsyncSession = Depends(get_db),
 ):
     from models.media import Media as _Media
+
+    # Отложенная отправка: строка в scheduled_messages; настоящее сообщение
+    # создаст воркер в момент доставки (свежий id → корректная позиция в ленте)
+    if data.send_at is not None:
+        from services.scheduled import schedule_message, scheduled_out
+        row = await schedule_message(
+            db,
+            current["user"].id,
+            chat_id,
+            text=data.content,
+            entities=data.entities,
+            media_id=data.media_id,
+            reply_to_message_id=data.reply_to_message_id,
+            send_at=data.send_at,
+        )
+        return {"message": scheduled_out(row), "idempotent": False}
+
     msg, idem = await create_message(
         db,
         current["user"].id,
@@ -170,7 +187,6 @@ async def send_chat_message(
         reply_to_message_id=data.reply_to_message_id,
         media_id=data.media_id,
         forward_message_id=data.forward_message_id,
-        send_at=data.send_at,
         entities=data.entities,
         encrypted_payload=data.encrypted_payload,
     )
@@ -537,31 +553,5 @@ async def list_scheduled_messages(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from datetime import datetime
-    from models.message import Message
-    from sqlalchemy.future import select as sa_select
-
-    await check_user_in_chat(db, current["user"].id, chat_id)
-    now = datetime.now(timezone.utc)
-    result = await db.execute(
-        sa_select(Message).where(
-            Message.chat_id == chat_id,
-            Message.user_id == current["user"].id,
-            Message.send_at.isnot(None),
-            Message.send_at > now,
-        ).order_by(Message.send_at)
-    )
-    msgs = result.scalars().all()
-    return [
-        {
-            "id": m.id,
-            "chat_id": m.chat_id,
-            "user_id": m.user_id,
-            "text": m.text,
-            "media_id": str(m.media_id) if m.media_id else None,
-            "reply_to_message_id": m.reply_to_message_id,
-            "send_at": m.send_at,
-            "created_at": m.created_at,
-        }
-        for m in msgs
-    ]
+    from services.scheduled import list_scheduled
+    return await list_scheduled(db, current["user"].id, chat_id)

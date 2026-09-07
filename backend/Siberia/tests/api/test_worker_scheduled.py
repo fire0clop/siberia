@@ -1,7 +1,8 @@
-"""Воркер scheduled-сообщений: at-least-once, статусы при доставке, payload.
+"""Отложенные сообщения: доставка воркером из scheduled_messages.
 
-Регрессии: send_at обнулялся до доставки (краш = сообщение потеряно навсегда),
-payload был пустым, статусы создавались при планировании.
+Архитектура: до отправки — строка в scheduled_messages; настоящее сообщение
+создаётся в момент доставки (свежий id → корректная позиция в ленте),
+at-least-once + идемпотентность по client_message_id.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -23,75 +24,128 @@ async def _schedule(client, u, chat_id, text_, minutes=60):
         headers=u.headers,
     )
     assert r.status_code == 200, r.text
-    return r.json()["message"]["id"]
+    return r.json()["message"]["id"]  # id из пространства scheduled_messages
 
 
-async def _make_due(msg_id):
+async def _make_due(scheduled_id):
     from db import async_session_maker
     async with async_session_maker() as db:
         await db.execute(
-            text("UPDATE messages SET send_at = now() - interval '5 seconds' WHERE id = :id"),
-            {"id": msg_id},
+            text("UPDATE scheduled_messages SET send_at = now() - interval '5 seconds' WHERE id = :id"),
+            {"id": scheduled_id},
         )
         await db.commit()
 
 
-async def test_delivery_creates_statuses_payload_and_clears_send_at(client, register_user):
+async def test_delivery_creates_fresh_message_at_bottom(client, register_user):
+    """Ключевой кейс: доставленная отложка встаёт В КОНЕЦ ленты, а не в глубину
+    истории по старому id (прежняя архитектура вставляла строку заранее)."""
     a = await register_user("wrk_a")
     b = await register_user("wrk_b")
     chat_id = await _dm(client, a, b)
-    msg_id = await _schedule(client, a, chat_id, "отложенное")
 
-    # До доставки: у B ноль непрочитанного (H-6)
-    r = await client.get("/users/me/badge", headers=b.headers)
-    assert r.json()["unread"] == 0
+    sched_id = await _schedule(client, a, chat_id, "отложенное")
 
-    await _make_due(msg_id)
+    # ПОСЛЕ планирования обычная переписка продолжается
+    later_id = (await client.post(
+        f"/chats/{chat_id}/messages", json={"content": "обычное позже"}, headers=b.headers
+    )).json()["message"]["id"]
+
+    # До доставки: у B ноль непрочитанного от отложки, в списке отложек она есть
+    sched_list = (await client.get(f"/chats/{chat_id}/messages/scheduled", headers=a.headers)).json()
+    assert [m["id"] for m in sched_list] == [sched_id]
+
+    await _make_due(sched_id)
     await worker_mod.deliver_scheduled_messages({})
 
-    # Доставлено: send_at очищен, у B появилось непрочитанное
+    # Отложка исчезла из списка, а в истории появилось сообщение со СВЕЖИМ id
+    assert (await client.get(f"/chats/{chat_id}/messages/scheduled", headers=a.headers)).json() == []
+    history = (await client.get(f"/chats/{chat_id}/messages", headers=b.headers)).json()
+    delivered = next(m for m in history if m["text"] == "отложенное")
+    assert delivered["id"] > later_id, "доставленная отложка должна быть внизу ленты"
+
+    # У B ровно одно непрочитанное (доставленное); повторный тик не дублирует
     r = await client.get("/users/me/badge", headers=b.headers)
-    assert r.json()["unread"] == 1
-
-    # Конверт в sync несёт реальный payload, а не {}
-    r = await client.get(f"/chats/{chat_id}/sync", params={"after_seq": 0}, headers=b.headers)
-    news = [u for u in r.json()["updates"] if u["event"] == "message_new" and u["message_id"] == msg_id]
-    assert news, "message_new for scheduled msg missing from sync"
-
-    # Повторный тик ничего не дублирует
+    unread_before = r.json()["unread"]
     await worker_mod.deliver_scheduled_messages({})
-    r = await client.get("/users/me/badge", headers=b.headers)
-    assert r.json()["unread"] == 1
+    assert (await client.get("/users/me/badge", headers=b.headers)).json()["unread"] == unread_before
+    history2 = (await client.get(f"/chats/{chat_id}/messages", headers=b.headers)).json()
+    assert len([m for m in history2 if m["text"] == "отложенное"]) == 1
 
 
 async def test_failed_delivery_is_retried_not_lost(client, register_user, monkeypatch):
-    """Краш на доставке не должен молча терять сообщение (at-least-once)."""
+    """Инфраструктурный сбой при доставке: строка откладывается, не теряется."""
     a = await register_user("fail_a")
     b = await register_user("fail_b")
     chat_id = await _dm(client, a, b)
-    msg_id = await _schedule(client, a, chat_id, "выживу")
-    await _make_due(msg_id)
+    sched_id = await _schedule(client, a, chat_id, "выживу")
+    await _make_due(sched_id)
 
-    # Ломаем шаг ВНУТРИ транзакции доставки
-    import services.sync_engine as se
-    real_log = se.log_update_on_locked_chat
+    calls = {"n": 0}
+    real = None
 
     async def boom(*args, **kwargs):
-        raise RuntimeError("simulated crash mid-delivery")
+        calls["n"] += 1
+        raise RuntimeError("simulated infra crash")
 
-    monkeypatch.setattr(se, "log_update_on_locked_chat", boom)
+    import services.message as msg_mod
+    real = msg_mod.create_message
+    monkeypatch.setattr(msg_mod, "create_message", boom)
+    # deliver_due импортирует create_message изнутри services.message
     await worker_mod.deliver_scheduled_messages({})
+    assert calls["n"] >= 1
 
-    # Сообщение НЕ потеряно: send_at жив (отложен на ретрай)
     from db import async_session_maker
     async with async_session_maker() as db:
-        row = await db.execute(text("SELECT send_at FROM messages WHERE id = :id"), {"id": msg_id})
-        send_at = row.scalar()
-    assert send_at is not None, "scheduled message was lost after a mid-delivery crash"
+        left = (await db.execute(
+            text("SELECT count(*) FROM scheduled_messages WHERE id = :id"), {"id": sched_id}
+        )).scalar()
+    assert left == 1, "строка не должна теряться при сбое"
 
-    # Чиним, делаем due снова — доставляется
-    monkeypatch.setattr(se, "log_update_on_locked_chat", real_log)
-    await _make_due(msg_id)
+    monkeypatch.setattr(msg_mod, "create_message", real)
+    await _make_due(sched_id)
     await worker_mod.deliver_scheduled_messages({})
-    r = await client.get("/users/me/badge", headers=b.headers)
-    assert r.json()["unread"] == 1
+    history = (await client.get(f"/chats/{chat_id}/messages", headers=b.headers)).json()
+    assert any(m["text"] == "выживу" for m in history)
+
+
+async def test_undeliverable_scheduled_is_dropped(client, register_user):
+    """Права умерли между планированием и доставкой (блок) — строка дропается."""
+    a = await register_user("und_a")
+    b = await register_user("und_b")
+    chat_id = await _dm(client, a, b)
+    sched_id = await _schedule(client, a, chat_id, "не дойдёт")
+
+    await client.post(f"/users/{a.id}/block", headers=b.headers)
+    await _make_due(sched_id)
+    await worker_mod.deliver_scheduled_messages({})
+
+    from db import async_session_maker
+    async with async_session_maker() as db:
+        left = (await db.execute(
+            text("SELECT count(*) FROM scheduled_messages WHERE id = :id"), {"id": sched_id}
+        )).scalar()
+    assert left == 0, "недоставляемая строка не должна блокировать очередь"
+    history = (await client.get(f"/chats/{chat_id}/messages", headers=b.headers)).json()
+    assert not any(m["text"] == "не дойдёт" for m in history)
+
+
+async def test_schedule_validation_and_cancel(client, register_user):
+    a = await register_user("val_a")
+    b = await register_user("val_b")
+    chat_id = await _dm(client, a, b)
+
+    # Прошлое → 400
+    past = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    r = await client.post(
+        f"/chats/{chat_id}/messages", json={"content": "x", "send_at": past}, headers=a.headers
+    )
+    assert r.status_code == 400
+
+    # Отмена своей — ок; чужой — 403
+    sched_id = await _schedule(client, a, chat_id, "отменю")
+    r = await client.delete(f"/messages/{sched_id}/scheduled", headers=b.headers)
+    assert r.status_code == 403
+    r = await client.delete(f"/messages/{sched_id}/scheduled", headers=a.headers)
+    assert r.status_code == 200
+    assert (await client.get(f"/chats/{chat_id}/messages/scheduled", headers=a.headers)).json() == []

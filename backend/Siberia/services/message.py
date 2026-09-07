@@ -37,33 +37,6 @@ async def _validate_reply_in_chat(
         raise HTTPException(status_code=400, detail="Invalid reply_to_message_id")
 
 
-async def build_message_new_payload(db: AsyncSession, message: Message) -> dict:
-    """Единый payload для конверта message_new — и в live-отправке, и в воркере.
-
-    Раньше воркер слал payload={} для scheduled-сообщений, и клиент показывал
-    пустое сообщение (H-6). Теперь обе ветки строят одинаковую нагрузку.
-    """
-    media_type = None
-    if message.media_id:
-        from models.media import Media as _Media
-        m = await db.get(_Media, message.media_id)
-        media_type = m.type.value if m else None
-    return {
-        "user_id": message.user_id,
-        "text": message.text,
-        "entities": message.text_entities,
-        "encrypted_payload": message.encrypted_payload,
-        "media_id": str(message.media_id) if message.media_id else None,
-        "media_type": media_type,
-        "client_message_id": str(message.client_message_id) if message.client_message_id else None,
-        "reply_to_message_id": message.reply_to_message_id,
-        "forwarded_from_message_id": message.forwarded_from_message_id,
-        "mention_user_ids": message.mention_user_ids,
-        "send_at": None,
-        "created_at": message.created_at.isoformat() if message.created_at else None,
-    }
-
-
 async def _add_statuses_for_new_message(
     db: AsyncSession, message_id: int, chat_id: int, sender_id: int
 ):
@@ -210,7 +183,6 @@ async def create_message(
     reply_to_message_id: int | None = None,
     media_id: UUID | None = None,
     forward_message_id: int | None = None,
-    send_at=None,
     entities=None,
     encrypted_payload: str | None = None,
 ) -> tuple[Message, bool]:
@@ -249,9 +221,8 @@ async def create_message(
     if _is_secret:
         if not encrypted_payload:
             raise HTTPException(status_code=400, detail="Secret chats accept only encrypted_payload")
-        if text is not None or media_id is not None or forward_message_id is not None \
-                or send_at is not None or entities:
-            raise HTTPException(status_code=400, detail="Secret chats: plaintext/media/forward/scheduling not allowed")
+        if text is not None or media_id is not None or forward_message_id is not None or entities:
+            raise HTTPException(status_code=400, detail="Secret chats: plaintext/media/forward not allowed")
     elif encrypted_payload is not None:
         raise HTTPException(status_code=400, detail="encrypted_payload is only for secret chats")
 
@@ -312,7 +283,6 @@ async def create_message(
         mention_user_ids=mention_user_ids,
         text_entities=validated_entities,
         encrypted_payload=encrypted_payload,
-        send_at=send_at,
     )
     db.add(message)
     try:
@@ -339,15 +309,8 @@ async def create_message(
             detail="Message conflict (duplicate client_message_id)",
         ) from None
 
-    is_scheduled = send_at is not None
-
-    if not is_scheduled:
-        chat.last_message_id = message.id
-        # Статусы (unread) создаём ТОЛЬКО для уже отправленных сообщений.
-        # Раньше их получали и scheduled-сообщения → они считались непрочитанными
-        # в badge/списке чатов ещё до отправки (H-6). Для scheduled статусы
-        # создаёт воркер в момент доставки.
-        await _add_statuses_for_new_message(db, message.id, chat_id, user_id)
+    chat.last_message_id = message.id
+    await _add_statuses_for_new_message(db, message.id, chat_id, user_id)
 
     _media_type = None
     if media_id:
@@ -366,55 +329,53 @@ async def create_message(
         "reply_to_message_id": reply_to_message_id,
         "forwarded_from_message_id": forwarded_from_message_id,
         "mention_user_ids": mention_user_ids,
-        "send_at": send_at.isoformat() if send_at else None,
+        "send_at": None,
         "created_at": message.created_at.isoformat() if message.created_at else None,
     }
 
-    if not is_scheduled:
-        seq, _ = await log_update_on_locked_chat(
-            db,
-            chat,
-            ChatUpdateEventType.message_new,
-            message.id,
-            payload,
-        )
+    seq, _ = await log_update_on_locked_chat(
+        db,
+        chat,
+        ChatUpdateEventType.message_new,
+        message.id,
+        payload,
+    )
 
     await db.commit()
     await db.refresh(message)
 
-    if not is_scheduled:
-        env = build_envelope(
-            chat_id,
-            seq,
-            ChatUpdateEventType.message_new,
-            message.id,
-            payload,
+    env = build_envelope(
+        chat_id,
+        seq,
+        ChatUpdateEventType.message_new,
+        message.id,
+        payload,
+    )
+    await broadcast_envelope(chat_id, env)
+
+    # Link preview: первая ссылка в тексте → асинхронная OG-задача в ARQ
+    from services.link_preview import extract_first_url
+    _preview_url = None if _is_secret else extract_first_url(text)
+    if _preview_url:
+        from utils.arq_pool import enqueue_job as _enqueue
+        asyncio.create_task(_enqueue("fetch_link_preview", message.id, _preview_url))
+
+    from services.push_dispatcher import dispatch_push_for_message
+    from models.user import User as _User
+    _sender = await db.get(_User, user_id)
+    sender_nick = _sender.nickname if _sender else str(user_id)
+
+    push_text = "🔒 Сообщение" if _is_secret else (text or ("📎 Media" if media_id else ""))
+    asyncio.create_task(
+        dispatch_push_for_message(
+            chat_id=chat_id,
+            message_id=message.id,
+            sender_id=user_id,
+            sender_nickname=sender_nick,
+            message_text=push_text,
+            mention_user_ids=mention_user_ids,
         )
-        await broadcast_envelope(chat_id, env)
-
-        # Link preview: первая ссылка в тексте → асинхронная OG-задача в ARQ
-        from services.link_preview import extract_first_url
-        _preview_url = None if _is_secret else extract_first_url(text)
-        if _preview_url:
-            from utils.arq_pool import enqueue_job as _enqueue
-            asyncio.create_task(_enqueue("fetch_link_preview", message.id, _preview_url))
-
-        from services.push_dispatcher import dispatch_push_for_message
-        from models.user import User as _User
-        _sender = await db.get(_User, user_id)
-        sender_nick = _sender.nickname if _sender else str(user_id)
-
-        push_text = "🔒 Сообщение" if _is_secret else (text or ("📎 Media" if media_id else ""))
-        asyncio.create_task(
-            dispatch_push_for_message(
-                chat_id=chat_id,
-                message_id=message.id,
-                sender_id=user_id,
-                sender_nickname=sender_nick,
-                message_text=push_text,
-                mention_user_ids=mention_user_ids,
-            )
-        )
+    )
 
     return message, False
 
@@ -439,7 +400,6 @@ async def create_message_auto(
         reply_to_message_id=reply_to_message_id,
         media_id=media_id,
         forward_message_id=None,
-        send_at=None,
         entities=entities,
     )
     return {

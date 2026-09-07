@@ -61,7 +61,7 @@ async def test_own_messages_not_counted_unread(client, register_user):
 
 
 async def test_scheduled_message_not_counted_unread(client, register_user):
-    """H-6: scheduled-сообщение не должно создавать unread до отправки."""
+    """Отложка до доставки живёт в scheduled_messages и unread не создаёт."""
     a = await register_user("sch_a")
     b = await register_user("sch_b")
     chat_id = await _dm(client, a, b)

@@ -94,20 +94,8 @@ async def cancel_scheduled_message(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from models.message import Message
-    from fastapi import HTTPException
-    from datetime import datetime, timezone
-
-    message = await db.get(Message, message_id)
-    if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
-    if message.user_id != current["user"].id:
-        raise HTTPException(status_code=403, detail="Not your message")
-    if message.send_at is None or message.send_at <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Message is not scheduled or already sent")
-
-    await db.delete(message)
-    await db.commit()
+    from services.scheduled import cancel_scheduled
+    await cancel_scheduled(db, current["user"].id, message_id)
     return {"detail": "Scheduled message cancelled"}
 
 
