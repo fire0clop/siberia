@@ -71,6 +71,8 @@ final class AppState: ObservableObject {
 			currentUser = nil
 		}
 		await MessageNotifications.requestAuthorizationIfNeeded()
+		// E2E: публикуем identity-ключ устройства (идемпотентно)
+		await E2ECrypto.shared.publishKeyIfNeeded()
 	}
 
 	func reconnectMeSocket() async {

@@ -183,9 +183,30 @@ struct PartnerProfileSheet: View {
 					else { showMuteSheet = true }
 				}
 			}
+			if !vm.isSecretChat {
+				actionButton(icon: "lock.fill", label: "Секретный чат", color: ChatDetailView.accent) {
+					Task { await startSecretChat() }
+				}
+			}
 			actionButton(icon: "hand.raised.fill", label: "Заблокировать", color: .red) {
 				Task { await blockPartner() }
 			}
+		}
+	}
+
+	/// Создаёт E2E-чат с собеседником и открывает его.
+	@MainActor private func startSecretChat() async {
+		guard let uid = member?.userId else { return }
+		do {
+			let chatId = try await E2ECrypto.shared.createSecretChat(peerId: uid)
+			dismiss()
+			NotificationCenter.default.post(name: .siberiaChatsShouldReload, object: nil)
+			NotificationCenter.default.post(
+				name: .siberiaOpenChat, object: nil, userInfo: ["chatId": chatId]
+			)
+		} catch {
+			Log.chat.error("secret chat create failed: \(String(describing: error))")
+			actionError = error.localizedDescription
 		}
 	}
 

@@ -264,6 +264,8 @@ struct ChatDetail: Codable {
 	let pinnedMessageId: Int?
 	let syncSeq: Int
 	let draftText: String?
+	/// E2E handshake секретного чата
+	let e2eHandshake: E2EHandshake?
 }
 
 // MARK: – Messages
@@ -278,7 +280,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 	let id: Int
 	let chatId: Int?
 	let userId: Int?      // nil для системных сообщений
-	let text: String?
+	/// var: секретные чаты подставляют расшифрованный текст в памяти
+	var text: String?
 	let createdAt: String?
 	let editedAt: String?
 	let deletedAt: String?
@@ -301,6 +304,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 	var entities: [MessageEntity]? = nil
 	/// OG-превью первой ссылки (заполняется бэком асинхронно)
 	var linkPreview: LinkPreview? = nil
+	/// E2E-блоб (секретные чаты): base64(nonce||ct||tag); text приходит nil
+	var encryptedPayload: String? = nil
 
 	var isDeleted: Bool { deleted ?? (deletedAt != nil) }
 	var hasMedia: Bool { mediaId != nil }
@@ -319,7 +324,8 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 			forwardedFromUserId: forwardedFromUserId,
 			forwardedFromChatId: forwardedFromChatId,
 			mentionUserIds: mentionUserIds, reactions: reactions,
-			type: type, entities: entities, linkPreview: linkPreview
+			type: type, entities: entities, linkPreview: linkPreview,
+			encryptedPayload: encryptedPayload
 		)
 	}
 }
@@ -340,6 +346,7 @@ struct MessageSendBody: Encodable {
 	let mediaId: String?
 	let mentionUserIds: [Int]?
 	var entities: [MessageEntity]? = nil
+	var encryptedPayload: String? = nil
 }
 
 struct MessagePatchBody: Encodable {

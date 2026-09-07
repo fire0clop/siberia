@@ -111,7 +111,15 @@ extension ChatDetailViewModel {
 				}
 
 				if !messages.contains(where: { $0.id == resolved.id }) {
-					upsert(resolved)
+					var incoming = resolved
+					if isSecretChat, incoming.text == nil, let blob = incoming.encryptedPayload {
+						if let key = secretChatKey() {
+							incoming.text = E2ECore.decrypt(blobB64: blob, key: key) ?? "🔒 Не удалось расшифровать"
+						} else {
+							incoming.text = "🔒 Не удалось расшифровать"
+						}
+					}
+					upsert(incoming)
 					if resolved.userId != currentUserId {
 						if isAtBottom {
 							// Чат открыт и пользователь внизу — сообщение прочитано.
@@ -286,7 +294,8 @@ extension ChatDetailViewModel {
 			mentionUserIds:            payload["mention_user_ids"] as? [Int],
 			reactions:                 nil,
 			type:                      payload["type"] as? String,
-			entities:                  parseEntities(payload["entities"])
+			entities:                  parseEntities(payload["entities"]),
+			encryptedPayload:          payload["encrypted_payload"] as? String
 		)
 	}
 

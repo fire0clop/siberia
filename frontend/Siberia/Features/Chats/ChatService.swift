@@ -154,7 +154,8 @@ final class ChatService {
 		forwardMessageId: Int? = nil,
 		mediaId: String? = nil,
 		mentionUserIds: [Int]? = nil,
-		entities: [MessageEntity]? = nil
+		entities: [MessageEntity]? = nil,
+		encryptedPayload: String? = nil
 	) async throws -> MessageSendResult {
 		let body = try encoder().encode(MessageSendBody(
 			content: text,
@@ -163,7 +164,8 @@ final class ChatService {
 			forwardMessageId: forwardMessageId,
 			mediaId: mediaId,
 			mentionUserIds: mentionUserIds,
-			entities: entities
+			entities: entities,
+			encryptedPayload: encryptedPayload
 		))
 		let data = try await APIClient.shared.request(
 			path: "/chats/\(chatId)/messages", method: "POST", body: body

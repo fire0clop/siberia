@@ -583,8 +583,10 @@ struct ChatsView: View {
 	// MARK: – Helpers
 
 	private func resolvedTitle(_ c: ChatSummary) -> String {
-		if let t = c.title, !t.isEmpty { return t }
-		return memberNames[c.id] ?? "Чат \(c.id)"
+		let base: String
+		if let t = c.title, !t.isEmpty { base = t }
+		else { base = memberNames[c.id] ?? "Чат \(c.id)" }
+		return c.type == "secret" ? "🔒 " + base : base
 	}
 
 	private func lastMessageDate(_ c: ChatSummary) -> Date? {

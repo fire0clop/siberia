@@ -330,7 +330,7 @@ struct ChatDetailView: View {
 
 			Button { showPartnerProfile = true } label: {
 				VStack(alignment: .leading, spacing: 2) {
-					Text(vm.title)
+					Text(vm.isSecretChat ? "🔒 " + vm.title : vm.title)
 						.font(.system(size: 16, weight: .semibold))
 						.foregroundStyle(.primary)
 						.lineLimit(1)
@@ -356,7 +356,7 @@ struct ChatDetailView: View {
 
 			// Кнопки звонка — только в 1-on-1 (isPrivateChat, а не «не группа»:
 			// канал тоже не группа, но звонить его подписчику нельзя)
-			if vm.isPrivateChat, let partner = vm.otherMember?.user {
+			if vm.isDirectChat, let partner = vm.otherMember?.user {
 				Button {
 					print("📞 [TAP] audio call button pressed for peer=\(partner.id)")
 					Task { await appState.startOutgoingCall(peer: partner, type: .audio) }

@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 import SwiftUI
 
@@ -102,6 +103,11 @@ final class ChatDetailViewModel: ObservableObject {
 	@Published var chatType: String? = nil
 
 	var isChannel: Bool { chatType == "channel" }
+	var isSecretChat: Bool { chatType == "secret" }
+	/// 1-на-1 чат (обычный или секретный) — партнёрский заголовок, presence, звонки
+	var isDirectChat: Bool { isPrivateChat || isSecretChat }
+	/// Handshake секретного чата (для деривации ключа)
+	var e2eHandshake: E2EHandshake? = nil
 	/// true только когда тип уже загружен и это DM. Не путать с "!isGroup":
 	/// канал тоже не группа, и раньше он рендерился как личный чат —
 	/// с кнопками звонка и «Заблокировать» на случайного подписчика.
@@ -185,7 +191,7 @@ final class ChatDetailViewModel: ObservableObject {
 		error = nil
 		// Покажем кэш мгновенно — даже без сети будет видно последние 100 сообщений
 		let cached = ChatCacheService.shared.loadMessages(chatId: chatId)
-		if !cached.isEmpty {
+		if !cached.isEmpty, chatType != "secret" {
 			messages = cached.sorted { $0.id < $1.id }
 		}
 		if currentUserId == nil, let me = try? await UserService.shared.me() {
@@ -243,8 +249,12 @@ final class ChatDetailViewModel: ObservableObject {
 			var sorted = batch.sorted { $0.id < $1.id }
 			for p in pending where !sorted.contains(where: { $0.id == p.id }) { sorted.append(p) }
 			messages = sorted
-			// Сохраняем на диск для offline-старта (последние 100 финальных сообщений)
-			ChatCacheService.shared.saveMessages(chatId: chatId, messages: messages)
+			decryptSecretMessages()
+			// Сохраняем на диск для offline-старта (последние 100 финальных сообщений).
+			// Секретные чаты на диск НЕ пишем — plaintext и блобы остаются в памяти.
+			if !isSecretChat {
+				ChatCacheService.shared.saveMessages(chatId: chatId, messages: messages)
+			}
 		} catch {
 			self.error = error.localizedDescription
 		}
@@ -263,6 +273,7 @@ final class ChatDetailViewModel: ObservableObject {
 			let fresh = batch.sorted { $0.id < $1.id }.filter { !existingIds.contains($0.id) }
 			guard !fresh.isEmpty else { return }
 			messages = fresh + messages
+			decryptSecretMessages()
 			// Возвращаем вьюпорт на бывшую верхнюю границу, иначе после prepend
 			// список прыгает наверх и снова триггерит loadMore (каскад).
 			restoreScrollToId = firstId
@@ -287,7 +298,10 @@ final class ChatDetailViewModel: ObservableObject {
 			let pending = messages.filter { isPending($0) }
 			for p in pending where !merged.contains(where: { $0.id == p.id }) { merged.append(p) }
 			messages = merged
-			ChatCacheService.shared.saveMessages(chatId: chatId, messages: messages)
+			decryptSecretMessages()
+			if !isSecretChat {
+				ChatCacheService.shared.saveMessages(chatId: chatId, messages: messages)
+			}
 		} catch {
 			Log.chat.error("reconcileAfterReconnect failed: \(String(describing: error))")
 		}
@@ -318,6 +332,7 @@ final class ChatDetailViewModel: ObservableObject {
 			let detail = try await detailTask
 			chatType = detail.type
 			isGroup = (detail.type == "group")
+			e2eHandshake = detail.e2eHandshake
 			// Restore draft if nothing typed yet
 			if draft.isEmpty, let draftText = detail.draftText, !draftText.isEmpty {
 				draft = draftText
@@ -343,14 +358,14 @@ final class ChatDetailViewModel: ObservableObject {
 			}
 			// Resolve title from partner nickname — ТОЛЬКО для DM
 			// (backend may return nil/generic title)
-			if isPrivateChat,
+			if isDirectChat,
 			   let myId = currentUserId,
 			   let nick = members.first(where: { $0.userId != myId })?.user.nickname {
 				title = nick
 			}
 			// Presence — только для DM (и только если экран ещё жив:
 			// после отмены .task запускать вечный polling — утечка)
-			if isPrivateChat,
+			if isDirectChat,
 			   let myId = currentUserId,
 			   let other = members.first(where: { $0.userId != myId }),
 			   !Task.isCancelled {
@@ -380,6 +395,34 @@ final class ChatDetailViewModel: ObservableObject {
 		latestSeq = r.latestSeq
 	}
 
+	// MARK: – E2E (секретные чаты)
+
+	private var cachedSecretKey: SymmetricKey? = nil
+
+	func secretChatKey() -> SymmetricKey? {
+		if let k = cachedSecretKey { return k }
+		guard isSecretChat else { return nil }
+		let key = E2ECrypto.shared.chatKey(chatId: chatId, handshake: e2eHandshake, myUserId: currentUserId)
+		cachedSecretKey = key
+		return key
+	}
+
+	/// Подставляет расшифрованный текст в сообщения (только в памяти —
+	/// на диск секретные чаты не кешируются).
+	func decryptSecretMessages() {
+		guard isSecretChat else { return }
+		let key = secretChatKey()
+		for i in messages.indices {
+			guard messages[i].text == nil, let blob = messages[i].encryptedPayload else { continue }
+			if let key {
+				messages[i].text = E2ECore.decrypt(blobB64: blob, key: key) ?? "🔒 Не удалось расшифровать"
+			} else {
+				// Ключа нет (переустановка/новое устройство) — v1-ограничение
+				messages[i].text = "🔒 Не удалось расшифровать"
+			}
+		}
+	}
+
 	// MARK: – Mark read
 
 	func markRead() async {
@@ -403,6 +446,10 @@ final class ChatDetailViewModel: ObservableObject {
 	func send() async {
 		let raw = draft.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !raw.isEmpty else { return }
+		if isSecretChat {
+			await sendSecret(raw)
+			return
+		}
 		// Markdown → чистый текст + entities (Telegram-модель: сервер и другие
 		// клиенты видят уже разобранную разметку)
 		let parsed = MarkdownParser.parse(raw)
@@ -449,6 +496,40 @@ final class ChatDetailViewModel: ObservableObject {
 			// Не удаляем из persistent-очереди — переотправим при reconnect.
 			// В UI оставляем pending bubble.
 			Log.chat.warning("send failed, will retry on reconnect: \(String(describing: error))")
+			self.error = error.localizedDescription
+		}
+	}
+
+	/// Отправка в секретный чат: шифруем локально, plaintext сервера не достигает.
+	/// Persistent-очередь НЕ используется (plaintext на диск нельзя) —
+	/// при ошибке сети сообщение остаётся в композере.
+	private func sendSecret(_ plaintext: String) async {
+		guard let key = secretChatKey() else {
+			error = "Ключ секретного чата недоступен на этом устройстве"
+			return
+		}
+		let blob: String
+		do {
+			blob = try E2ECore.encrypt(text: plaintext, key: key)
+		} catch {
+			self.error = "Не удалось зашифровать сообщение"
+			return
+		}
+		let savedDraft = draft
+		draft = ""
+		replyingTo = nil
+		do {
+			let r = try await ChatService.shared.sendMessage(
+				chatId: chatId, text: nil,
+				clientMessageId: UUID(),
+				encryptedPayload: blob
+			)
+			var msg = r.message.withResolvedChatId(chatId)
+			msg.text = plaintext  // своё сообщение показываем сразу
+			upsert(msg)
+			scrollToBottomSignal += 1
+		} catch {
+			draft = savedDraft
 			self.error = error.localizedDescription
 		}
 	}
@@ -580,10 +661,11 @@ final class ChatDetailViewModel: ObservableObject {
 	var cacheSaveTask: Task<Void, Never>?
 
 	private func debouncedSaveCache() {
+		guard !isSecretChat else { return }  // plaintext секретных чатов на диск нельзя
 		cacheSaveTask?.cancel()
 		cacheSaveTask = Task { [weak self] in
 			try? await Task.sleep(nanoseconds: 2_000_000_000)
-			guard !Task.isCancelled, let self else { return }
+			guard !Task.isCancelled, let self, !self.isSecretChat else { return }
 			ChatCacheService.shared.saveMessages(chatId: self.chatId, messages: self.messages)
 		}
 	}
