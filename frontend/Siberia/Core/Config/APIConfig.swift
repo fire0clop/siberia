@@ -20,7 +20,7 @@ enum APIConfig {
 	/// недопустим, поэтому подставляется продовый домен.
 	private static let fallbackBaseURL: String = {
 		#if DEBUG
-		return "http://192.168.1.134:8000"
+		return "http://192.168.50.49:8000"
 		#else
 		return "https://api.siberia.app"
 		#endif
