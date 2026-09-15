@@ -196,7 +196,8 @@ struct PartnerProfileSheet: View {
 
 	/// Создаёт E2E-чат с собеседником и открывает его.
 	@MainActor private func startSecretChat() async {
-		guard let uid = member?.userId else { return }
+		guard let uid = member?.userId, !isActionBusy else { return }
+		isActionBusy = true; defer { isActionBusy = false }
 		do {
 			let chatId = try await E2ECrypto.shared.createSecretChat(peerId: uid)
 			dismiss()
@@ -249,8 +250,11 @@ struct PartnerProfileSheet: View {
 		}
 	}
 
+	@State private var isActionBusy = false
+
 	@MainActor private func blockPartner() async {
-		guard let uid = member?.userId else { return }
+		guard let uid = member?.userId, !isActionBusy else { return }
+		isActionBusy = true; defer { isActionBusy = false }
 		do {
 			try await UserService.shared.block(userId: uid)
 			dismiss()

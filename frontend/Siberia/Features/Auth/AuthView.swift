@@ -183,6 +183,7 @@ private struct PrimaryAuthButton: View {
 
     var body: some View {
         Button {
+            guard !isLoading else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             action()
         } label: {

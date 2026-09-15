@@ -248,6 +248,7 @@ struct AddFriendView: View {
 	}
 
 	private func addFriend(_ user: User) async {
+		guard !busyIds.contains(user.id) else { return }
 		busyIds.insert(user.id); defer { busyIds.remove(user.id) }
 		do {
 			try await FriendService.shared.addFriend(userId: user.id)
@@ -257,6 +258,7 @@ struct AddFriendView: View {
 	}
 
 	private func openChat(with user: User) async {
+		guard !busyIds.contains(user.id) else { return }
 		busyIds.insert(user.id); defer { busyIds.remove(user.id) }
 		do {
 			let chat = try await ChatService.shared.createChat(withUserId: user.id)

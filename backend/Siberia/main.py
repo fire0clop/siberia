@@ -88,6 +88,10 @@ app.add_middleware(
 # ── Middleware & handlers ─────────────────────────────────────────────────────
 app.add_middleware(RequestContextMiddleware)
 
+# Глобальный per-IP лимит — страховка от спама запросами (см. utils/global_rate_limit)
+from utils.global_rate_limit import GlobalRateLimitMiddleware  # noqa: E402
+app.add_middleware(GlobalRateLimitMiddleware)
+
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)

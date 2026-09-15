@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     VERIFY_CODE_MAX_ATTEMPTS: int = 5      # попыток ввода email-кода
     VERIFY_CODE_LOCKOUT_MINUTES: int = 15  # на сколько блокируем после превышения
 
+    # ── Global rate limit ─────────────────────────────────────────────────────
+    # Запросов в минуту с одного IP на всё API (кроме /health, /metrics, WS).
+    # Страховка от залипших клиентских циклов и скриптового спама. 0 = выкл.
+    GLOBAL_RATE_LIMIT_PER_MINUTE: int = 600
+
     # ── WebSocket tunables ────────────────────────────────────────────────────
     WS_PING_INTERVAL: int = 25
     WS_PING_TIMEOUT: int = 10

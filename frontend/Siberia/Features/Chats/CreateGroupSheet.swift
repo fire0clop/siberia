@@ -142,6 +142,7 @@ struct CreateGroupSheet: View {
 		let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
 		let trimmedDesc = description.trimmingCharacters(in: .whitespaces)
 		guard !trimmedTitle.isEmpty, !selectedIds.isEmpty else { return }
+		guard !isBusy else { return }
 		isBusy = true
 		defer { isBusy = false }
 		do {

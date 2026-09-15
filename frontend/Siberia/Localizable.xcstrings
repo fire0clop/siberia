@@ -1,666 +1,1167 @@
 {
-  "sourceLanguage": "ru",
-  "strings": {
-    "OK": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "OK"
+  "sourceLanguage" : "ru",
+  "strings" : {
+    "" : {
+
+    },
+    ":" : {
+
+    },
+    "…" : {
+
+    },
+    "%lld" : {
+
+    },
+    "%lld / %lld" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld / %2$lld"
+          }
+        }
+      }
+    },
+    "%lld выбрано" : {
+
+    },
+    "%lld подписчиков" : {
+
+    },
+    "%lld участников" : {
+
+    },
+    "%lld/%lld" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "%lld/200" : {
+
+    },
+    "↑ зафикс." : {
+
+    },
+    "000000" : {
+
+    },
+    "99+" : {
+
+    },
+    "Email" : {
+
+    },
+    "OK" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
           }
         }
       }
     },
-    "Архив пуст": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Archive is empty"
+    "SIBERIA" : {
+
+    },
+    "Архив" : {
+
+    },
+    "Архив пуст" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archive is empty"
           }
         }
       }
     },
-    "Аудиозвонок": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voice call"
+    "Аудиозвонок" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice call"
           }
         }
       }
     },
-    "В архив": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Archive"
+    "Быстрый выбор" : {
+
+    },
+    "В архив" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archive"
           }
         }
       }
     },
-    "В папку": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add to folder"
+    "В папку" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add to folder"
           }
         }
       }
     },
-    "В этой папке пока пусто": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This folder is empty"
+    "В чат" : {
+
+    },
+    "В этой папке пока пусто" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This folder is empty"
           }
         }
       }
+    },
+    "Введи данные и поехали" : {
+
+    },
+    "Введите 6-значный код из приложения-аутентификатора" : {
+
+    },
+    "Введите название канала" : {
+
+    },
+    "Введите ник" : {
+
+    },
+    "Введите текущий 6-значный код из приложения-аутентификатора чтобы выключить двухфакторную защиту." : {
+
+    },
+    "Версия %lld" : {
+
     },
-    "Видеозвонок": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Video call"
+    "Виден в поиске, любой может подписаться" : {
+
+    },
+    "Видео" : {
+
+    },
+    "Видео-звонок" : {
+
+    },
+    "Видеозвонок" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video call"
           }
         }
       }
     },
-    "Включить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable"
+    "Включена" : {
+
+    },
+    "Включить" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable"
           }
         }
       }
+    },
+    "Включить 2FA" : {
+
     },
-    "Все": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All"
+    "Включить уведомления" : {
+
+    },
+    "Вложение" : {
+
+    },
+    "Войти" : {
+
+    },
+    "Все" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All"
           }
         }
       }
     },
-    "Вы подписаны на канал": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You are subscribed to this channel"
+    "Вы подписаны на канал" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You are subscribed to this channel"
           }
         }
       }
     },
-    "Выключена": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Off"
+    "Выбрать из библиотеки" : {
+
+    },
+    "Выйти из аккаунта" : {
+
+    },
+    "Выключена" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off"
           }
         }
       }
+    },
+    "Выключить" : {
+
     },
-    "Глобальный поиск": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Global search"
+    "Глобальный поиск" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Global search"
           }
         }
       }
     },
-    "Группы": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Groups"
+    "Готово" : {
+
+    },
+    "Группа" : {
+
+    },
+    "Группы" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Groups"
           }
         }
       }
+    },
+    "Дата и время" : {
+
+    },
+    "Двухфакторная защита" : {
+
+    },
+    "Двухфакторная защита включена" : {
+
+    },
+    "Действие с участником" : {
+
+    },
+    "До" : {
+
+    },
+    "Добавить" : {
+
+    },
+    "Добавить участников" : {
+
+    },
+    "Документы" : {
+
     },
-    "Заблокировать": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Block"
+    "Друзья (%lld выбрано)" : {
+
+    },
+    "Если выбрано «Никто», вы тоже не увидите чужой последний визит." : {
+
+    },
+    "Заблокированные" : {
+
+    },
+    "Заблокировать" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Block"
           }
         }
       }
+    },
+    "Завершить" : {
+
+    },
+    "Завершить все другие сессии" : {
+
     },
-    "Загрузка…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Loading…"
+    "Загрузка…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading…"
           }
         }
       }
     },
-    "Закрепить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pin"
+    "Закрепить" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pin"
           }
         }
       }
     },
-    "Закреплено": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pinned"
+    "Закреплено" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pinned"
           }
         }
       }
     },
-    "Закрыть": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close"
+    "Закрыть" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
           }
         }
       }
     },
-    "Закрыть меню вложений": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close attach menu"
+    "Закрыть меню вложений" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close attach menu"
           }
         }
       }
     },
-    "Из архива": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unarchive"
+    "Заявки в друзья, которые вы отправили, появятся здесь." : {
+
+    },
+    "звонит вам…" : {
+
+    },
+    "Звонок" : {
+
+    },
+    "Из архива" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unarchive"
           }
         }
       }
     },
-    "Информация": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Info"
+    "Или введите ключ вручную:" : {
+
+    },
+    "Информация" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Info"
           }
         }
       }
     },
-    "История изменений": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit history"
+    "История изменений" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit history"
           }
         }
       }
+    },
+    "Исходящие заявки" : {
+
     },
-    "Каналы": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Channels"
+    "Канал" : {
+
+    },
+    "Каналы" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Channels"
           }
         }
       }
+    },
+    "Когда вы заблокируете пользователя, он появится здесь." : {
+
     },
-    "Копировать": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy"
+    "Когда отправить" : {
+
+    },
+    "Конфиденциальность" : {
+
+    },
+    "Копировать" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy"
           }
         }
       }
+    },
+    "Кто видит мой аватар" : {
+
     },
-    "Личные": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Personal"
+    "Кто может видеть мой последний визит" : {
+
+    },
+    "Кто может писать мне первым" : {
+
+    },
+    "Личные" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personal"
           }
         }
       }
     },
-    "Люди": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "People"
+    "Личные сообщения" : {
+
+    },
+    "Люди" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "People"
           }
         }
       }
     },
-    "Моя": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "My"
+    "Моя" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My"
           }
         }
       }
     },
-    "Моя история": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "My story"
+    "Моя история" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My story"
           }
         }
       }
+    },
+    "Мы отправили 6-значный код на %@." : {
+
+    },
+    "Мы отправили 6-значный код на ваш email." : {
+
     },
-    "Название": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Name"
+    "На 1 час" : {
+
+    },
+    "На 8 часов" : {
+
+    },
+    "Навсегда" : {
+
+    },
+    "Нажмите ✏️ вверху, чтобы начать диалог" : {
+
+    },
+    "Название" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
           }
         }
       }
+    },
+    "Название группы" : {
+
     },
-    "Найти канал": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Find a channel"
+    "Найдите кого-нибудь через поиск выше." : {
+
+    },
+    "Найти канал" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Find a channel"
           }
         }
       }
+    },
+    "Найти людей, сообщения или чаты" : {
+
+    },
+    "Найти по нику" : {
+
     },
-    "Не удалось загрузить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failed to load"
+    "Начните вводить ник" : {
+
+    },
+    "не в сети" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "offline"
           }
         }
       }
     },
-    "Не удалось опубликовать": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failed to post"
+    "Не подтверждён" : {
+
+    },
+    "Не удалось загрузить" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to load"
           }
         }
       }
     },
-    "Не удалось расшифровать": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failed to decrypt"
+    "Не удалось опубликовать" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to post"
           }
         }
       }
+    },
+    "Не удалось открыть чат" : {
+
     },
-    "Новая папка": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New folder"
+    "Не удалось расшифровать" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to decrypt"
           }
         }
       }
     },
-    "Новый чат": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New chat"
+    "Невидимка" : {
+
+    },
+    "Невидимый режим" : {
+
+    },
+    "Несколько слов о себе…" : {
+
+    },
+    "Нет аккаунта?" : {
+
+    },
+    "Нет доступных друзей" : {
+
+    },
+    "Нет друзей" : {
+
+    },
+    "Нет исходящих заявок" : {
+
+    },
+    "Нет отложенных сообщений" : {
+
+    },
+    "Нет совпадений" : {
+
+    },
+    "Нет сообщений" : {
+
+    },
+    "Никнейм" : {
+
+    },
+    "Никто не заблокирован" : {
+
+    },
+    "Новая группа" : {
+
+    },
+    "Новая папка" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New folder"
           }
         }
       }
+    },
+    "Новый аккаунт" : {
+
+    },
+    "Новый канал" : {
+
     },
-    "Новый чат / группа": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New chat / group"
+    "Новый чат" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New chat"
           }
         }
       }
     },
-    "Опубликовать историю": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Post a story"
+    "Новый чат / группа" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New chat / group"
           }
         }
       }
     },
-    "Ответить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reply"
+    "О себе" : {
+
+    },
+    "Ожидает ответа" : {
+
+    },
+    "онлайн" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "online"
           }
         }
       }
     },
-    "Отключить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Disable"
+    "Описание (необязательно)" : {
+
+    },
+    "Опубликовать историю" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Post a story"
           }
         }
       }
     },
-    "Открепить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unpin"
+    "Оригинал" : {
+
+    },
+    "Ответить" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reply"
           }
         }
       }
+    },
+    "Отключение 2FA" : {
+
     },
-    "Отмена": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cancel"
+    "Отключить" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disable"
           }
         }
       }
     },
-    "Отправить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Send"
+    "Отключить 2FA" : {
+
+    },
+    "Отключить на 1 час" : {
+
+    },
+    "Отключить на 8 часов" : {
+
+    },
+    "Отключить навсегда" : {
+
+    },
+    "Отключить уведомления" : {
+
+    },
+    "Открепить" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unpin"
           }
         }
       }
+    },
+    "Открываем чат…" : {
+
+    },
+    "Открыть ↗" : {
+
+    },
+    "Открыть чат" : {
+
+    },
+    "Отложенная отправка" : {
+
+    },
+    "Отложенные" : {
+
     },
-    "Ошибка": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Error"
+    "Отмена" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
           }
         }
       }
     },
-    "Переслать": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Forward"
+    "Отозвать" : {
+
+    },
+    "Отправится через сервер" : {
+
+    },
+    "Отправить" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send"
           }
         }
       }
     },
-    "Поиск": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search"
+    "Отправить заново через %llds" : {
+
+    },
+    "Отправить код заново" : {
+
+    },
+    "Ошибка" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error"
           }
         }
       }
+    },
+    "Ошибка звонка" : {
+
     },
-    "Прикрепить файл": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Attach a file"
+    "Пара секунд — и ты внутри" : {
+
+    },
+    "Переслано от %@" : {
+
+    },
+    "Переслать" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forward"
           }
         }
       }
+    },
+    "Переслать в…" : {
+
+    },
+    "печатает…" : {
+
+    },
+    "Подписаться" : {
+
+    },
+    "Подтвердить" : {
+
     },
-    "Просмотрели": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Viewed by"
+    "Подтверждён" : {
+
+    },
+    "Подтверждение email" : {
+
+    },
+    "Подтверждение входа" : {
+
+    },
+    "Позже" : {
+
+    },
+    "Поиск" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search"
           }
         }
       }
+    },
+    "Поиск везде" : {
+
+    },
+    "Поиск среди друзей" : {
+
+    },
+    "Покинуть" : {
+
+    },
+    "Покинуть группу" : {
+
+    },
+    "Покинуть группу (передаст права)" : {
+
+    },
+    "Покинуть группу?" : {
+
     },
-    "Профиль": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Profile"
+    "При включённом режиме уведомления из этого чата не показываются в указанный промежуток времени." : {
+
+    },
+    "При следующем входе потребуется код из приложения-аутентификатора." : {
+
+    },
+    "Прикрепить файл" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attach a file"
           }
         }
       }
     },
-    "Реакция": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reaction"
+    "Просмотрели" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viewed by"
           }
         }
       }
     },
-    "Редактировать": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit"
+    "Профиль" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profile"
           }
         }
       }
+    },
+    "Публичный канал" : {
+
+    },
+    "Разблокировать" : {
+
+    },
+    "Расписание" : {
+
     },
-    "Секретный чат": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Secret chat"
+    "Реакция" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reaction"
           }
         }
       }
     },
-    "Создать": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Create"
+    "ред." : {
+
+    },
+    "Редактирование" : {
+
+    },
+    "Редактировать" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit"
           }
         }
       }
+    },
+    "Режим «Не беспокоить»" : {
+
+    },
+    "С" : {
+
+    },
+    "С возвращением" : {
+
+    },
+    "связь без границ" : {
+
     },
-    "Сообщение удалено": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Message deleted"
+    "Сделать админом" : {
+
+    },
+    "Сейчас: %@" : {
+
+    },
+    "Секретный чат" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secret chat"
           }
         }
       }
     },
-    "Сообщение…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Message…"
+    "Снять с админа" : {
+
+    },
+    "Создать" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create"
           }
         }
       }
+    },
+    "Сообщение" : {
+
+    },
+    "Сообщение не редактировалось" : {
+
     },
-    "Сообщения": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Messages"
+    "Сообщение удалено" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Message deleted"
           }
         }
       }
     },
-    "Удалить": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete"
+    "Сообщение…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Message…"
           }
         }
       }
     },
-    "Удалить папку": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete folder"
+    "Сообщения" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messages"
           }
         }
       }
+    },
+    "Сохранить" : {
+
+    },
+    "Текущая версия" : {
+
+    },
+    "Текущее" : {
+
+    },
+    "Только по приглашению" : {
+
+    },
+    "Уведомления" : {
+
     },
-    "Удалить сообщение?": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete message?"
+    "Уведомления (%@)" : {
+
+    },
+    "Удалить" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
           }
         }
       }
+    },
+    "Удалить из группы" : {
+
     },
-    "Удалить у всех": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete for everyone"
+    "Удалить из друзей" : {
+
+    },
+    "Удалить папку" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete folder"
           }
         }
       }
     },
-    "Удалить у меня": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete for me"
+    "Удалить сообщение?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete message?"
           }
         }
       }
     },
-    "Файл": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "File"
+    "Удалить у всех" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete for everyone"
           }
         }
       }
     },
-    "Фото/Видео": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Photo/Video"
+    "Удалить у меня" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete for me"
           }
         }
       }
+    },
+    "Удалить фото" : {
+
+    },
+    "Уже есть аккаунт?" : {
+
     },
-    "Чат": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Chat"
+    "Участники" : {
+
+    },
+    "Файл" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File"
           }
         }
       }
+    },
+    "Фото" : {
+
+    },
+    "Фото профиля" : {
+
     },
-    "Чаты": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Chats"
+    "Фото/Видео" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photo/Video"
           }
         }
       }
     },
-    "не в сети": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "offline"
+    "Чат" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat"
           }
         }
       }
     },
-    "онлайн": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "online"
+    "Чаты" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chats"
           }
         }
       }
+    },
+    "Шаг 1. Откройте приложение-аутентификатор (Google Authenticator, 1Password, Authy) и добавьте код из QR." : {
+
+    },
+    "Шаг 2. Введите 6-значный код, который покажет приложение." : {
+
+    },
+    "Это применяется только к новым диалогам. Существующие чаты остаются как есть." : {
+
     }
   },
-  "version": "1.0"
+  "version" : "1.0"
 }

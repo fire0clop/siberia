@@ -67,6 +67,7 @@ struct CreateChannelSheet: View {
 		let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
 		let trimmedDesc = description.trimmingCharacters(in: .whitespaces)
 		guard !trimmedTitle.isEmpty else { return }
+		guard !isBusy else { return }
 		isBusy = true
 		defer { isBusy = false }
 		do {

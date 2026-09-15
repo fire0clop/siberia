@@ -119,6 +119,7 @@ struct StoriesRowView: View {
 	// MARK: – Публикация
 
 	private func publishStory(_ item: PhotosPickerItem) async {
+		guard !isUploading else { return }
 		isUploading = true
 		defer { isUploading = false }
 		do {

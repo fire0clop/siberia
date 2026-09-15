@@ -100,6 +100,8 @@ struct EmailVerificationView: View {
 
 	@MainActor
 	private func verify() async {
+		guard !isBusy else { return }
+		guard !isBusy else { return }
 		isBusy = true; error = nil; notice = nil
 		defer { isBusy = false }
 		do {

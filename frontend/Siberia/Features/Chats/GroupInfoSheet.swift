@@ -197,6 +197,7 @@ struct GroupInfoSheet: View {
 
 	@MainActor private func addMembers(_ ids: [Int]) async {
 		guard !ids.isEmpty else { return }
+		guard !isBusy else { return }
 		isBusy = true; defer { isBusy = false }
 		do {
 			try await ChatService.shared.addMembers(chatId: vm.chatId, userIds: ids)
@@ -209,6 +210,7 @@ struct GroupInfoSheet: View {
 	}
 
 	@MainActor private func kick(_ m: ChatMember) async {
+		guard !isBusy else { return }
 		isBusy = true; defer { isBusy = false }
 		do {
 			try await ChatService.shared.removeMember(chatId: vm.chatId, userId: m.userId)
@@ -220,6 +222,7 @@ struct GroupInfoSheet: View {
 	}
 
 	@MainActor private func changeRole(_ m: ChatMember, to role: String) async {
+		guard !isBusy else { return }
 		isBusy = true; defer { isBusy = false }
 		do {
 			try await ChatService.shared.changeMemberRole(chatId: vm.chatId, userId: m.userId, role: role)
@@ -231,6 +234,7 @@ struct GroupInfoSheet: View {
 	}
 
 	@MainActor private func leave() async {
+		guard !isBusy else { return }
 		isBusy = true; defer { isBusy = false }
 		do {
 			try await ChatService.shared.leaveChat(chatId: vm.chatId)

@@ -22,6 +22,10 @@ final class AuthViewModel: ObservableObject {
 	@Published var pendingEmailVerification = false
 
 	func submit(appState: AppState) async {
+		// Защита от двойного тапа: второй Task, заэнкьюенный тем же жестом,
+		// упирается сюда синхронно (MainActor) и выходит — именно так один
+		// клик по «Зарегистрироваться» породил два запроса (200 + 400).
+		guard !isLoading else { return }
 		isLoading = true
 		error = nil
 		defer { isLoading = false }
@@ -102,6 +106,7 @@ final class AuthViewModel: ObservableObject {
 	// MARK: – 2FA verification
 
 	func verifyTwoFactor(appState: AppState) async {
+		guard !isLoading else { return }
 		guard let temp = pendingTwoFactorToken else { return }
 		let code = twoFactorCode.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard code.count == 6 else {
