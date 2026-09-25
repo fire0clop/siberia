@@ -27,3 +27,4 @@ pyrate-limiter==4.1.0
 arq==0.28.0
 python-multipart==0.0.29
 greenlet==3.5.1
+cryptography==44.0.2

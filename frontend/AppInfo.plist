@@ -4,12 +4,12 @@
 <dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- ATS включён. NSAllowsLocalNetworking пускает HTTP только на локальную
+		     сеть (private IP, *.local) — этого хватает для разработки на
+		     http://192.168.x.x:8000. Публичные хосты обязаны быть HTTPS/TLS,
+		     иначе iOS рвёт соединение. NSAllowsArbitraryLoads УБРАН: он отключал
+		     ATS целиком и в релизе, открывая MITM на весь трафик (чаты, звонки). -->
 		<key>NSAllowsLocalNetworking</key>
-		<true/>
-		<!-- На время разработки разрешаем произвольные HTTP-загрузки —
-		     иначе на реальном устройстве iOS блокирует http://192.168.x.x:8000.
-		     В продакшене нужно убрать и перейти на HTTPS. -->
-		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>

@@ -18,23 +18,25 @@ async def test_normal_rotation(client, register_user):
     assert body["access_token"]
 
 
-async def test_grace_window_converges_on_winners_token(client, register_user):
-    """Легитимная гонка: второй refresh со старым токеном получает ТЕКУЩИЙ
-    refresh победителя, а не reuse-детект с удалением всех сессий."""
+async def test_grace_window_reissues_not_nuke(client, register_user):
+    """Легитимная гонка: проигравший старым токеном получает НОВЫЙ рабочий
+    токен (а не reuse-детект с удалением всех сессий). Токены в базе хранятся
+    хешами, поэтому «вернуть токен победителя» нельзя — переиздаём."""
     u = await register_user("race")
 
     r1 = await _refresh(client, u, u.refresh)
     assert r1.status_code == 200
-    winner_refresh = r1.json()["refresh_token"]
 
-    # «Проигравший» шлёт тот же старый токен в пределах grace-окна
+    # «Проигравший» шлёт тот же старый токен в пределах grace-окна — не 401
     r2 = await _refresh(client, u, u.refresh)
     assert r2.status_code == 200, f"grace refresh failed: {r2.text}"
-    assert r2.json()["refresh_token"] == winner_refresh
+    loser_refresh = r2.json()["refresh_token"]
+    assert loser_refresh != u.refresh  # выдан новый токен, а не отказ
 
-    # Обе стороны сошлись на одном токене — им можно пользоваться дальше
-    r3 = await _refresh(client, u, winner_refresh)
-    assert r3.status_code == 200
+    # Гонка не отстрелила сессию: выданный проигравшему токен продолжает работать.
+    # (Клиент после дабл-тапа оставляет ОДИН токен и им и пользуется —
+    # именно это и проверяем: сессия жива, а не 401.)
+    assert (await _refresh(client, u, loser_refresh)).status_code == 200
 
 
 async def test_real_reuse_still_nukes_all_sessions(client, register_user):

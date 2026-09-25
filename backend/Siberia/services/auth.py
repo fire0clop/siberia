@@ -17,6 +17,7 @@ from models.push_token import PushToken
 from services.security import hash_password, verify_password
 from utils.jwt import create_access_token, create_refresh_token, decode_token
 from utils.redis import mark_session_revoked
+from utils.secrets_crypto import hash_token, encrypt_secret, decrypt_secret
 from config import settings
 
 
@@ -185,7 +186,7 @@ def _active_totp_secret(user: User) -> str | None:
     secret = user.totp_secret
     if not secret or secret.startswith(_TOTP_PENDING_PREFIX):
         return None
-    return secret
+    return decrypt_secret(secret)  # в базе лежит enc:v1:... (или легаси-plaintext)
 
 def create_pre_auth_token(user_id: int, session_id: int) -> str:
     from datetime import timedelta
@@ -280,7 +281,7 @@ async def create_tokens(
     access = create_access_token(user_id, session.id)
     refresh = create_refresh_token(user_id, session.id)
 
-    session.refresh_token = refresh
+    session.refresh_token = hash_token(refresh)
     session.last_active = datetime.now(timezone.utc)
 
     await db.commit()
@@ -400,7 +401,7 @@ async def confirm_totp(db: AsyncSession, user_id: int, totp_code: str) -> None:
     if not totp.verify(totp_code, valid_window=1):
         raise HTTPException(status_code=401, detail="Invalid TOTP code")
 
-    user.totp_secret = secret
+    user.totp_secret = encrypt_secret(secret)  # активный секрет — только в шифре
     await db.commit()
 
 
@@ -451,27 +452,40 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str, device_id: str | 
 
     user_id = session.user_id
     now = datetime.now(timezone.utc)
+    incoming_hash = hash_token(refresh_token)  # в базе хранятся ХЕШИ токенов
 
-    if session.refresh_token == refresh_token:
+    if session.refresh_token == incoming_hash:
         # Обычная строгая ротация (P8.3)
         new_access = create_access_token(user_id, session.id)
         new_refresh = create_refresh_token(user_id, session.id)
 
-        session.prev_refresh_token = refresh_token
+        session.prev_refresh_token = session.refresh_token  # хеш старого current
         session.rotated_at = now
-        session.refresh_token = new_refresh
+        session.refresh_token = hash_token(new_refresh)
         session.last_active = now
         await db.commit()
         return new_access, new_refresh
 
     if (
         session.prev_refresh_token is not None
-        and session.prev_refresh_token == refresh_token
+        and session.prev_refresh_token == incoming_hash
         and session.rotated_at is not None
         and (now - session.rotated_at).total_seconds() < REFRESH_ROTATION_GRACE_SECONDS
     ):
-        # Grace: проигравший недавнюю гонку клиент получает свежий access
-        # и ТЕКУЩИЙ refresh — обе стороны сходятся на одном токене.
+        # Grace: проигравший гонку клиент. Токены хранятся хешами, вернуть
+        # «текущий» plaintext нельзя — переиздаём НОВЫЙ токен ему. prev делаем
+        # текущим-хешем, чтобы токен победителя тоже остался принимаемым в окне
+        # (обе ветви гонки сходятся, лишний токен двух поколений назад — reuse).
+        new_access = create_access_token(user_id, session.id)
+        new_refresh = create_refresh_token(user_id, session.id)
+        session.prev_refresh_token = session.refresh_token
+        session.refresh_token = hash_token(new_refresh)
+        session.last_active = now
+        await db.commit()
+        return new_access, new_refresh
+
+    # (недостижимо — оставлено для наглядности diff)
+    if False:
         new_access = create_access_token(user_id, session.id)
         await db.commit()  # снять лок
         return new_access, session.refresh_token
@@ -483,7 +497,7 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str, device_id: str | 
 
 async def logout_user(db: AsyncSession, refresh_token: str) -> None:
     result = await db.execute(
-        select(Session).where(Session.refresh_token == refresh_token)
+        select(Session).where(Session.refresh_token == hash_token(refresh_token))
     )
     session = result.scalars().first()
     if session:

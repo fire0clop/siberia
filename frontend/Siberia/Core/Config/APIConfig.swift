@@ -27,11 +27,23 @@ enum APIConfig {
 	}()
 
 	nonisolated(unsafe) static var baseURL: String = {
-		if let configured = Bundle.main.object(forInfoDictionaryKey: "SiberiaAPIBaseURL") as? String,
-		   !configured.trimmingCharacters(in: .whitespaces).isEmpty {
-			return configured
-		}
-		return fallbackBaseURL
+		let resolved: String = {
+			if let configured = Bundle.main.object(forInfoDictionaryKey: "SiberiaAPIBaseURL") as? String,
+			   !configured.trimmingCharacters(in: .whitespaces).isEmpty {
+				return configured
+			}
+			return fallbackBaseURL
+		}()
+		#if !DEBUG
+		// В релизе plaintext-HTTP недопустим: он означал бы, что переписку и
+		// звонки можно перехватить на линии. Падаем громко на старте, а не
+		// молча отправляем трафик в открытую.
+		precondition(
+			resolved.hasPrefix("https://"),
+			"Release build requires an https:// API base URL (got \(resolved))"
+		)
+		#endif
+		return resolved
 	}()
 
 	nonisolated static var wsBaseURL: String {

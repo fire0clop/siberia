@@ -28,7 +28,7 @@ class User(Base):
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
 
     email_verified = Column(Boolean, nullable=False, default=False, server_default="false")
-    totp_secret = Column(String(64), nullable=True)
+    totp_secret = Column(String(255), nullable=True)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     chats = relationship("ChatMember", back_populates="user", cascade="all, delete")
