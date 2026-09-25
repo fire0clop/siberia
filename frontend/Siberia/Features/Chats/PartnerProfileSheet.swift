@@ -121,8 +121,8 @@ struct PartnerProfileSheet: View {
 						.padding(.horizontal, 16)
 						.padding(.bottom, 20)
 
-					// ── Отпечаток безопасности (только секретный чат) ──
-					if vm.isSecretChat {
+					// ── Отпечаток безопасности (любой E2E-чат) ──
+					if vm.isEncrypted {
 						safetyNumberCard
 							.padding(.horizontal, 16)
 							.padding(.bottom, 20)

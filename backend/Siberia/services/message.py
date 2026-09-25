@@ -203,7 +203,9 @@ async def create_message(
     from models.chat import ChatType as _ChatType
     from services.block_service import check_not_blocked
     _chat_row = await db.get(Chat, chat_id)
-    _is_secret = _chat_row is not None and _chat_row.type == _ChatType.secret
+    # E2E определяется наличием handshake, а не типом: и секретные чаты, и
+    # обычные DM после стадии 2 несут handshake и идут одним шифро-путём.
+    _is_e2e = _chat_row is not None and _chat_row.e2e_handshake is not None
     if _chat_row is not None and _chat_row.type in (_ChatType.private, _ChatType.secret):
         _other = await db.execute(
             select(_ChatMember.user_id).where(
@@ -215,16 +217,16 @@ async def create_message(
         if _other_id is not None:
             await check_not_blocked(db, user_id, _other_id)
 
-    # E2E: в секретном чате принимаем ТОЛЬКО шифроблоб — никакого plaintext,
-    # медиа, форвардов и отложенной отправки (v1). Вне секретного чата
+    # E2E: в шифрованном чате принимаем ТОЛЬКО шифроблоб — никакого plaintext,
+    # медиа, форвардов и отложенной отправки (v1). В нешифрованном чате
     # encrypted_payload запрещён.
-    if _is_secret:
+    if _is_e2e:
         if not encrypted_payload:
-            raise HTTPException(status_code=400, detail="Secret chats accept only encrypted_payload")
+            raise HTTPException(status_code=400, detail="Encrypted chats accept only encrypted_payload")
         if text is not None or media_id is not None or forward_message_id is not None or entities:
-            raise HTTPException(status_code=400, detail="Secret chats: plaintext/media/forward not allowed")
+            raise HTTPException(status_code=400, detail="Encrypted chats: plaintext/media/forward not allowed")
     elif encrypted_payload is not None:
-        raise HTTPException(status_code=400, detail="encrypted_payload is only for secret chats")
+        raise HTTPException(status_code=400, detail="encrypted_payload is only for encrypted chats")
 
     await _validate_reply_in_chat(db, chat_id, reply_to_message_id)
 
@@ -252,8 +254,8 @@ async def create_message(
     if media_id is not None:
         await _validate_media_access(db, media_id, user_id)
 
-    mention_user_ids = None if _is_secret else (await _resolve_mentions(db, text, chat_id) or None)
-    validated_entities = None if _is_secret else validate_entities(text, entities)
+    mention_user_ids = None if _is_e2e else (await _resolve_mentions(db, text, chat_id) or None)
+    validated_entities = None if _is_e2e else validate_entities(text, entities)
 
     chat = await lock_chat_row(db, chat_id)
 
@@ -355,7 +357,7 @@ async def create_message(
 
     # Link preview: первая ссылка в тексте → асинхронная OG-задача в ARQ
     from services.link_preview import extract_first_url
-    _preview_url = None if _is_secret else extract_first_url(text)
+    _preview_url = None if _is_e2e else extract_first_url(text)
     if _preview_url:
         from utils.arq_pool import enqueue_job as _enqueue
         asyncio.create_task(_enqueue("fetch_link_preview", message.id, _preview_url))
@@ -365,7 +367,7 @@ async def create_message(
     _sender = await db.get(_User, user_id)
     sender_nick = _sender.nickname if _sender else str(user_id)
 
-    push_text = "🔒 Сообщение" if _is_secret else (text or ("📎 Media" if media_id else ""))
+    push_text = "🔒 Сообщение" if _is_e2e else (text or ("📎 Media" if media_id else ""))
     asyncio.create_task(
         dispatch_push_for_message(
             chat_id=chat_id,

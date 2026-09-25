@@ -588,7 +588,9 @@ struct ChatsView: View {
 		let base: String
 		if let t = c.title, !t.isEmpty { base = t }
 		else { base = memberNames[c.id] ?? "Чат \(c.id)" }
-		return c.type == "secret" ? "🔒 " + base : base
+		// Замок у любого end-to-end чата: секретного или обычного DM с handshake.
+		let encrypted = c.type == "secret" || c.e2eHandshake != nil
+		return encrypted ? "🔒 " + base : base
 	}
 
 	private func lastMessageDate(_ c: ChatSummary) -> Date? {

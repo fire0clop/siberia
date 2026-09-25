@@ -256,6 +256,49 @@ final class E2ECrypto {
 		return chatId
 	}
 
+	/// Создаёт (или до-обновляет legacy-plaintext до E2E) личный чат с peer.
+	///
+	/// Стадия 2: обычные DM шифруются по умолчанию. Логика:
+	///   1. Тянем identity-ключ собеседника. Нет ключа → создаём обычный
+	///      plaintext-DM (обратная совместимость: собеседник ещё не заходил).
+	///   2. Есть ключ → шлём свой eph_pub; сервер собирает handshake на
+	///      новом ИЛИ существующем (legacy) чате.
+	///   3. Если вернувшийся handshake — МОЙ (eph_pub совпал), я создатель:
+	///      вывожу ключ своим эфемерным приватным и сохраняю (единственный
+	///      момент, когда это возможно). Иначе ключ выведет сторона-получатель
+	///      лениво при открытии (E2ECrypto.chatKey, peer-путь).
+	func createChat(peerId: Int) async throws -> ChatSummary {
+		// Наш публичный ключ должен лежать на сервере, иначе handshake не собрать
+		await publishKeyIfNeeded()
+
+		// Ключ собеседника (может отсутствовать)
+		var peerPub: Curve25519.KeyAgreement.PublicKey? = nil
+		if let keyData = try? await APIClient.shared.request(path: "/e2e/keys/\(peerId)", method: "GET") {
+			struct KeyOut: Codable { let publicKey: String }
+			if let out = try? APIClient.shared.decode(KeyOut.self, from: keyData) {
+				peerPub = E2ECore.publicKey(fromB64: out.publicKey)
+			}
+		}
+
+		var payload: [String: Any] = ["user_id": peerId]
+		let eph = Curve25519.KeyAgreement.PrivateKey()
+		let ephPubB64 = E2ECore.publicKeyB64(eph)
+		if peerPub != nil {
+			payload["eph_pub"] = ephPubB64
+		}
+		let body = try JSONSerialization.data(withJSONObject: payload)
+		let data = try await APIClient.shared.request(path: "/chats", method: "POST", body: body)
+		let summary = try APIClient.shared.decode(ChatSummary.self, from: data)
+
+		// Я — создатель этого handshake (совпал мой eph): сохраняю ключ сейчас.
+		if let hs = summary.e2eHandshake, hs.ephPub == ephPubB64,
+		   let peerPub, storedChatKey(summary.id) == nil,
+		   let key = try? E2ECore.creatorChatKey(ephPriv: eph, peerIdentityPub: peerPub, chatId: summary.id) {
+			storeChatKey(key, chatId: summary.id)
+		}
+		return summary
+	}
+
 	/// Ключ чата: из Keychain, либо деривация по handshake (путь собеседника).
 	func chatKey(chatId: Int, handshake: E2EHandshake?, myUserId: Int?) -> SymmetricKey? {
 		if let stored = storedChatKey(chatId) { return stored }

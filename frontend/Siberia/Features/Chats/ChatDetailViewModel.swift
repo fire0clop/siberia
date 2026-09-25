@@ -97,6 +97,9 @@ final class ChatDetailViewModel: ObservableObject {
 	// MARK: – Published — chat meta
 
 	@Published var pinnedMessage: ChatMessage?
+	/// id закреплённого сообщения из detail — резолвится в pinnedMessage,
+	/// когда сообщения загрузятся (meta теперь грузится ДО сообщений).
+	var pinnedMessageId: Int?
 	@Published var chatMembers: [ChatMember] = []
 	@Published var isGroup: Bool = false
 	/// Тип чата с бэка: "private" / "group" / "channel" / "saved". nil — ещё не загружен.
@@ -104,6 +107,12 @@ final class ChatDetailViewModel: ObservableObject {
 
 	var isChannel: Bool { chatType == "channel" }
 	var isSecretChat: Bool { chatType == "secret" }
+	/// Чат шифруется end-to-end. Стадия 2: это секретные чаты И обычные DM с
+	/// установленным handshake. Именно на этот признак завязаны шифрование,
+	/// запрет plaintext на диск и деривация ключа — не на литеральный тип.
+	/// Секретный чат всегда несёт handshake, отдельная проверка isSecretChat —
+	/// защита на момент, пока detail (handshake) ещё не подгрузился.
+	var isEncrypted: Bool { isSecretChat || e2eHandshake != nil }
 	/// 1-на-1 чат (обычный или секретный) — партнёрский заголовок, presence, звонки
 	var isDirectChat: Bool { isPrivateChat || isSecretChat }
 	/// Handshake секретного чата (для деривации ключа)
@@ -197,13 +206,17 @@ final class ChatDetailViewModel: ObservableObject {
 		if currentUserId == nil, let me = try? await UserService.shared.me() {
 			currentUserId = me.id
 		}
+		// Тип чата и handshake узнаём ДО загрузки сообщений: иначе шифрованные
+		// сообщения приедут раньше, чем известно, что чат E2E, — их не
+		// расшифруют и (хуже) запишут на диск. loadChatMeta ставит e2eHandshake.
+		await loadChatMeta()
+		guard !Task.isCancelled else { isLoading = false; return }
 		await loadMessages()
 		// .task отменяется при уходе с экрана; без этих гардов ушедший
 		// пользователь получал заново открытый сокет и вечный presence-polling
 		// (onDisappear уже отработал) — утечка VM + живого WS на каждый чат.
 		guard !Task.isCancelled else { return }
 		await markRead()
-		await loadChatMeta()
 		guard !Task.isCancelled else { isLoading = false; return }
 		try? await runSync()
 		guard !Task.isCancelled else { isLoading = false; return }
@@ -250,9 +263,13 @@ final class ChatDetailViewModel: ObservableObject {
 			for p in pending where !sorted.contains(where: { $0.id == p.id }) { sorted.append(p) }
 			messages = sorted
 			decryptSecretMessages()
+			// meta грузится раньше сообщений — резолвим закреплённое сообщение здесь.
+			if pinnedMessage == nil, let pid = pinnedMessageId {
+				pinnedMessage = messages.first(where: { $0.id == pid })
+			}
 			// Сохраняем на диск для offline-старта (последние 100 финальных сообщений).
-			// Секретные чаты на диск НЕ пишем — plaintext и блобы остаются в памяти.
-			if !isSecretChat {
+			// Шифрованные чаты на диск НЕ пишем — plaintext и блобы остаются в памяти.
+			if !isEncrypted {
 				ChatCacheService.shared.saveMessages(chatId: chatId, messages: messages)
 			}
 		} catch {
@@ -299,7 +316,7 @@ final class ChatDetailViewModel: ObservableObject {
 			for p in pending where !merged.contains(where: { $0.id == p.id }) { merged.append(p) }
 			messages = merged
 			decryptSecretMessages()
-			if !isSecretChat {
+			if !isEncrypted {
 				ChatCacheService.shared.saveMessages(chatId: chatId, messages: messages)
 			}
 		} catch {
@@ -333,11 +350,18 @@ final class ChatDetailViewModel: ObservableObject {
 			chatType = detail.type
 			isGroup = (detail.type == "group")
 			e2eHandshake = detail.e2eHandshake
+			// Чат оказался шифрованным — на диске не должно оставаться ничего
+			// открытого (например, plaintext-кэш legacy-DM до его E2E-апгрейда).
+			if isEncrypted {
+				ChatCacheService.shared.dropMessages(chatId: chatId)
+			}
 			// Restore draft if nothing typed yet
 			if draft.isEmpty, let draftText = detail.draftText, !draftText.isEmpty {
 				draft = draftText
 			}
-			// Pin
+			// Pin: сообщения могут быть ещё не загружены (meta грузится раньше) —
+			// сохраняем id, резолвим в pinnedMessage после loadMessages.
+			pinnedMessageId = detail.pinnedMessageId
 			if let pid = detail.pinnedMessageId {
 				pinnedMessage = messages.first(where: { $0.id == pid })
 			}
@@ -372,6 +396,10 @@ final class ChatDetailViewModel: ObservableObject {
 				partnerUserId = other.userId
 				await fetchPresence()
 				if !Task.isCancelled { startPresencePolling() }
+				// Стадия 2: legacy-plaintext DM (нет handshake) до-обновляем до
+				// E2E при открытии. Инициатор становится creator'ом; если у
+				// собеседника ещё нет ключа — остаётся plaintext (fallback).
+				await upgradePrivateChatToE2EIfNeeded()
 			}
 		} catch {
 			Log.chat.error("members fetch failed: \(String(describing: error))")
@@ -401,16 +429,16 @@ final class ChatDetailViewModel: ObservableObject {
 
 	func secretChatKey() -> SymmetricKey? {
 		if let k = cachedSecretKey { return k }
-		guard isSecretChat else { return nil }
+		guard isEncrypted else { return nil }
 		let key = E2ECrypto.shared.chatKey(chatId: chatId, handshake: e2eHandshake, myUserId: currentUserId)
 		cachedSecretKey = key
 		return key
 	}
 
 	/// Подставляет расшифрованный текст в сообщения (только в памяти —
-	/// на диск секретные чаты не кешируются).
+	/// на диск шифрованные чаты не кешируются).
 	func decryptSecretMessages() {
-		guard isSecretChat else { return }
+		guard isEncrypted else { return }
 		let key = secretChatKey()
 		for i in messages.indices {
 			guard messages[i].text == nil, let blob = messages[i].encryptedPayload else { continue }
@@ -421,6 +449,17 @@ final class ChatDetailViewModel: ObservableObject {
 				messages[i].text = "🔒 Не удалось расшифровать"
 			}
 		}
+	}
+
+	/// До-обновляет обычный (legacy-plaintext) DM до end-to-end при открытии.
+	/// Ничего не делает, если чат уже E2E, не приватный, или собеседник неизвестен.
+	private func upgradePrivateChatToE2EIfNeeded() async {
+		guard isPrivateChat, e2eHandshake == nil, let peer = partnerUserId else { return }
+		guard let summary = try? await E2ECrypto.shared.createChat(peerId: peer),
+		      let hs = summary.e2eHandshake else { return }  // у собеседника нет ключа — остаёмся plaintext
+		e2eHandshake = hs
+		cachedSecretKey = nil
+		ChatCacheService.shared.dropMessages(chatId: chatId)
 	}
 
 	// MARK: – Mark read
@@ -446,7 +485,14 @@ final class ChatDetailViewModel: ObservableObject {
 	func send() async {
 		let raw = draft.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !raw.isEmpty else { return }
-		if isSecretChat {
+		// Тип/handshake ещё не подгрузились — узнаём (только detail, без
+		// presence/members), прежде чем решать plaintext или шифр: иначе
+		// можно отправить открытый текст в E2E-чат.
+		if chatType == nil, let detail = try? await ChatService.shared.chatDetail(chatId: chatId) {
+			chatType = detail.type
+			e2eHandshake = detail.e2eHandshake
+		}
+		if isEncrypted {
 			await sendSecret(raw)
 			return
 		}
@@ -661,11 +707,11 @@ final class ChatDetailViewModel: ObservableObject {
 	var cacheSaveTask: Task<Void, Never>?
 
 	private func debouncedSaveCache() {
-		guard !isSecretChat else { return }  // plaintext секретных чатов на диск нельзя
+		guard !isEncrypted else { return }  // plaintext шифрованных чатов на диск нельзя
 		cacheSaveTask?.cancel()
 		cacheSaveTask = Task { [weak self] in
 			try? await Task.sleep(nanoseconds: 2_000_000_000)
-			guard !Task.isCancelled, let self, !self.isSecretChat else { return }
+			guard !Task.isCancelled, let self, !self.isEncrypted else { return }
 			ChatCacheService.shared.saveMessages(chatId: self.chatId, messages: self.messages)
 		}
 	}

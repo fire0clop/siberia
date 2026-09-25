@@ -9,6 +9,10 @@ from schemas.user import UserOut
 
 class ChatCreate(BaseModel):
     user_id: int  # for private chat creation
+    # Эфемерный X25519-pub инициатора. Если передан и у обоих есть E2E-ключи —
+    # приватный чат создаётся (или до-обновляется) как end-to-end: сервер хранит
+    # только handshake, plaintext DM его не достигает. Без него — legacy plaintext.
+    eph_pub: Optional[str] = Field(None, min_length=40, max_length=128)
 
 
 class GroupCreate(BaseModel):

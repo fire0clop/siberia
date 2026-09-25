@@ -214,6 +214,9 @@ struct ChatSummary: Codable, Identifiable, Equatable {
 	let unreadCount: Int?
 	/// Архив per-user (nil у старого бэка = не в архиве)
 	let isArchived: Bool?
+	/// E2E handshake: у секретных чатов и у обычных DM после стадии 2.
+	/// Наличие = чат шифруется end-to-end. nil у групп/каналов/legacy-plaintext.
+	let e2eHandshake: E2EHandshake?
 	// Nested object: { "last_message": { "text": "...", "created_at": "..." } }
 	let lastMessage: NestedMessage?
 
@@ -465,10 +468,6 @@ struct PresenceResponse: Codable {
 }
 
 // MARK: – Sessions
-
-struct CreateChatBody: Encodable {
-	let userId: Int
-}
 
 struct DeviceSession: Codable, Identifiable {
 	let id: Int

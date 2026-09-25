@@ -18,10 +18,11 @@ final class ChatService {
 		return try APIClient.shared.decode([ChatSummary].self, from: data)
 	}
 
+	/// Личный чат создаётся end-to-end по умолчанию (стадия 2): деривация
+	/// ключей и handshake — в E2ECrypto. Если у собеседника ещё нет ключа,
+	/// E2ECrypto создаёт обычный plaintext-DM (обратная совместимость).
 	func createChat(withUserId userId: Int) async throws -> ChatSummary {
-		let body = try encoder().encode(CreateChatBody(userId: userId))
-		let data = try await APIClient.shared.request(path: "/chats", method: "POST", body: body)
-		return try APIClient.shared.decode(ChatSummary.self, from: data)
+		try await E2ECrypto.shared.createChat(peerId: userId)
 	}
 
 	// MARK: – Groups

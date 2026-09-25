@@ -330,7 +330,7 @@ struct ChatDetailView: View {
 
 			Button { showPartnerProfile = true } label: {
 				VStack(alignment: .leading, spacing: 2) {
-					Text(vm.isSecretChat ? "🔒 " + vm.title : vm.title)
+					Text(vm.isEncrypted ? "🔒 " + vm.title : vm.title)
 						.font(.system(size: 16, weight: .semibold))
 						.foregroundStyle(.primary)
 						.lineLimit(1)

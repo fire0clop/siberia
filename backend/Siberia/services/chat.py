@@ -84,11 +84,36 @@ async def _check_can_message(db: AsyncSession, sender_id: int, recipient_id: int
     )
 
 
+async def _build_handshake(
+    db: AsyncSession, creator_id: int, peer_id: int, eph_pub: str
+) -> dict | None:
+    """Собирает E2E-handshake для DM, если у обеих сторон опубликованы ключи.
+
+    Возвращает None, если ключа нет хотя бы у одного — тогда чат остаётся
+    legacy-plaintext (например, собеседник ещё ни разу не заходил после
+    выката E2E). Инициатор шлёт свой eph_pub; identity-ключи берём из базы.
+    """
+    from models.e2e_key import E2EKey
+
+    creator_key = await db.get(E2EKey, creator_id)
+    peer_key = await db.get(E2EKey, peer_id)
+    if creator_key is None or peer_key is None:
+        return None
+    return {
+        "v": 1,
+        "creator_id": creator_id,
+        "eph_pub": eph_pub,
+        "creator_identity_pub": creator_key.public_key,
+        "peer_identity_pub": peer_key.public_key,
+    }
+
+
 async def create_chat(
     db: AsyncSession,
     creator_id: int,
     user_ids: list[int],
     title: str | None,
+    eph_pub: str | None = None,
 ):
     all_users = set(user_ids)
     all_users.add(creator_id)
@@ -103,9 +128,22 @@ async def create_chat(
         user_list = list(all_users)
         other_id = user_list[0] if user_list[1] == creator_id else user_list[1]
 
-        # Return existing chat immediately — no privacy check needed
+        # Return existing chat immediately — no privacy check needed.
+        # Legacy-DM без handshake (старая plaintext-переписка после миграции)
+        # до-обновляем до E2E: инициатор становится creator'ом, привязываем
+        # handshake к уже существующему чату. Кто первый взял advisory-lock —
+        # тот и creator; проигравший потом выведет ключ peer-путём из handshake.
         existing = await get_private_chat_between(db, creator_id, other_id)
         if existing:
+            if existing.e2e_handshake is None and eph_pub is not None:
+                await lock_private_pair(db, creator_id, other_id)
+                await db.refresh(existing)
+                if existing.e2e_handshake is None:
+                    hs = await _build_handshake(db, creator_id, other_id, eph_pub)
+                    if hs is not None:
+                        existing.e2e_handshake = hs
+                        await db.commit()
+                        await db.refresh(existing)
             return existing
 
         # New chat: enforce messaging privacy + block check.
@@ -118,6 +156,24 @@ async def create_chat(
         existing = await get_private_chat_between(db, creator_id, other_id)
         if existing:
             return existing
+
+        # Новый DM: если есть eph_pub и ключи у обоих — сразу E2E (type=private,
+        # но с handshake). Иначе legacy-plaintext.
+        handshake = None
+        if eph_pub is not None:
+            handshake = await _build_handshake(db, creator_id, other_id, eph_pub)
+        chat = Chat(title=title, e2e_handshake=handshake)
+        db.add(chat)
+        await db.flush()
+
+        now = datetime.now(timezone.utc)
+        db.add_all([
+            ChatMember(chat_id=chat.id, user_id=uid, role=MemberRole.member, joined_at=now)
+            for uid in all_users
+        ])
+        await db.commit()
+        await db.refresh(chat)
+        return chat
 
     chat = Chat(title=title)
     db.add(chat)

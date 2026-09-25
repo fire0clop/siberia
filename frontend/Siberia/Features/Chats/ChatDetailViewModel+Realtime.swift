@@ -112,7 +112,7 @@ extension ChatDetailViewModel {
 
 				if !messages.contains(where: { $0.id == resolved.id }) {
 					var incoming = resolved
-					if isSecretChat, incoming.text == nil, let blob = incoming.encryptedPayload {
+					if isEncrypted, incoming.text == nil, let blob = incoming.encryptedPayload {
 						if let key = secretChatKey() {
 							incoming.text = E2ECore.decrypt(blobB64: blob, key: key) ?? "🔒 Не удалось расшифровать"
 						} else {

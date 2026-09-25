@@ -48,11 +48,15 @@ async def create(
     db: AsyncSession = Depends(get_db),
 ):
     user = current["user"]
+    if data.eph_pub is not None:
+        from routes.e2e import _validate_x25519_pub
+        _validate_x25519_pub(data.eph_pub)
     return await create_chat(
         db=db,
         creator_id=user.id,
         user_ids=[data.user_id],
         title=None,
+        eph_pub=data.eph_pub,
     )
 
 

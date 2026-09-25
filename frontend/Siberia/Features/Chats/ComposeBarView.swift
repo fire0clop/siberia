@@ -83,8 +83,8 @@ struct ComposeBarView: View {
 				Image(systemName: "trash").font(.system(size: 17))
 					.foregroundStyle(.red).frame(width: 28, height: 34)
 			}
-		} else if vm.isSecretChat {
-			// Секретный чат (v1): только зашифрованный текст — аттачей нет
+		} else if vm.isEncrypted {
+			// E2E-чат (v1): только зашифрованный текст — медиа/аттачей нет
 			Image(systemName: "lock.fill")
 				.font(.system(size: 18))
 				.foregroundStyle(.secondary)
@@ -216,8 +216,8 @@ struct ComposeBarView: View {
 				.accessibilityLabel("Отправить")
 				.simultaneousGesture(
 					LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-						// Отложенная отправка в секретных чатах запрещена (v1)
-						guard canSend, !vm.isSecretChat else { return }
+						// Отложенная отправка в E2E-чатах запрещена (v1)
+						guard canSend, !vm.isEncrypted else { return }
 						UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
 						showScheduleSheet = true
 					}
@@ -226,7 +226,7 @@ struct ComposeBarView: View {
 				.scaleEffect(canSend ? 1 : 0.4)
 				.allowsHitTesting(canSend)
 
-				if !vm.isSecretChat {
+				if !vm.isEncrypted {
 					micButton
 						.opacity(canSend ? 0 : 1)
 						.scaleEffect(canSend ? 0.4 : 1)
