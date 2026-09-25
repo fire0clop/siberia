@@ -85,3 +85,42 @@ final class E2ECryptoTests: XCTestCase {
 		XCTAssertEqual(E2ECore.decrypt(blobB64: blob, key: peerKey), "привет с той стороны")
 	}
 }
+
+extension E2ECryptoTests {
+
+	private func b64key() -> String {
+		Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation.base64EncodedString()
+	}
+
+	func testSafetyNumberOrderIndependent() {
+		let a = b64key(); let b = b64key()
+		let ab = E2ECore.safetyNumber(a, b)
+		let ba = E2ECore.safetyNumber(b, a)
+		XCTAssertNotNil(ab)
+		XCTAssertEqual(ab, ba, "число должно быть одинаковым независимо от порядка сторон")
+	}
+
+	func testSafetyNumberFormat() {
+		let sn = E2ECore.safetyNumber(b64key(), b64key())!
+		let groups = sn.split(separator: " ")
+		XCTAssertEqual(groups.count, 12)
+		for g in groups {
+			XCTAssertEqual(g.count, 5)
+			XCTAssertTrue(g.allSatisfy(\.isNumber))
+		}
+	}
+
+	func testSafetyNumberDiffersOnKeySubstitution() {
+		let mine = b64key()
+		let realPeer = b64key()
+		let attacker = b64key()   // сервер подсунул свой ключ вместо ключа собеседника
+		let honest = E2ECore.safetyNumber(mine, realPeer)
+		let mitm   = E2ECore.safetyNumber(mine, attacker)
+		XCTAssertNotEqual(honest, mitm, "подмена ключа обязана менять отпечаток — иначе MITM незаметен")
+	}
+
+	func testSafetyNumberRejectsBadInput() {
+		XCTAssertNil(E2ECore.safetyNumber("not-base64", b64key()))
+		XCTAssertNil(E2ECore.safetyNumber(Data([1,2,3]).base64EncodedString(), b64key()))
+	}
+}

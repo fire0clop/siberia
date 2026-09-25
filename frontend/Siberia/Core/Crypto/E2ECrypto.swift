@@ -89,6 +89,34 @@ enum E2ECore {
 		guard let raw = Data(base64Encoded: b64), raw.count == 32 else { return nil }
 		return try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: raw)
 	}
+
+	/// Отпечаток безопасности (safety number) из двух identity-ключей.
+	///
+	/// Порядко-независим: обе стороны при сравнении получают ОДНО число, если
+	/// у них согласованные ключи. Если сервер подменил ключ одному из
+	/// собеседников (active MITM), их числа разойдутся — и это видно при
+	/// сверке вслух/по другому каналу. Крипта не ломается — ломается обман.
+	///
+	/// 60 десятичных цифр, 12 групп по 5 — как в Signal, читается голосом.
+	static func safetyNumber(_ keyA_b64: String, _ keyB_b64: String) -> String? {
+		guard let a = Data(base64Encoded: keyA_b64), a.count == 32,
+		      let b = Data(base64Encoded: keyB_b64), b.count == 32 else { return nil }
+		// Сортируем, чтобы порядок сторон не влиял на результат
+		let (lo, hi) = a.lexicographicallyPrecedes(b) ? (a, b) : (b, a)
+		var material = Data()
+		material.append(lo); material.append(hi)
+		let digest = Data(SHA256.hash(data: material))  // 32 байта
+
+		// 12 групп по 5 цифр: каждая группа — 5-байтовое окно mod 100000
+		var groups: [String] = []
+		for i in 0..<12 {
+			let start = (i * 5) % (digest.count - 4)
+			var v: UInt64 = 0
+			for j in 0..<5 { v = (v << 8) | UInt64(digest[start + j]) }
+			groups.append(String(format: "%05d", v % 100_000))
+		}
+		return groups.joined(separator: " ")
+	}
 }
 
 // MARK: – Handshake-модель (зеркало chats.e2e_handshake)
@@ -159,6 +187,23 @@ final class E2ECrypto {
 		let key = Curve25519.KeyAgreement.PrivateKey()
 		writeData(key.rawRepresentation, identityAccount)
 		return key
+	}
+
+	/// Base64 публичного identity-ключа этого устройства.
+	func myIdentityPublicKeyB64() -> String {
+		E2ECore.publicKeyB64(identityKey())
+	}
+
+	/// Отпечаток безопасности для секретного чата: МОЙ реальный ключ (из
+	/// Keychain) + ключ собеседника из handshake. Свой ключ берём настоящий,
+	/// а не его копию из handshake, — так подмена именно моего ключа сервером
+	/// тоже вылезет при сверке.
+	func safetyNumber(handshake: E2EHandshake, myUserId: Int?) -> String? {
+		let mine = myIdentityPublicKeyB64()
+		let peer = (handshake.creatorId == myUserId)
+			? handshake.peerIdentityPub
+			: handshake.creatorIdentityPub
+		return E2ECore.safetyNumber(mine, peer)
 	}
 
 	/// Публикует публичный ключ на бэке (идемпотентно, best-effort).

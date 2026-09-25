@@ -121,6 +121,13 @@ struct PartnerProfileSheet: View {
 						.padding(.horizontal, 16)
 						.padding(.bottom, 20)
 
+					// ── Отпечаток безопасности (только секретный чат) ──
+					if vm.isSecretChat {
+						safetyNumberCard
+							.padding(.horizontal, 16)
+							.padding(.bottom, 20)
+					}
+
 					// ── Media tabs ───────────────────────────────────
 					if hasAnyMedia {
 						VStack(spacing: 0) {
@@ -167,6 +174,41 @@ struct PartnerProfileSheet: View {
 		.alert("Ошибка", isPresented: .init(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
 			Button("OK", role: .cancel) { actionError = nil }
 		} message: { Text(actionError ?? "") }
+	}
+
+	// MARK: – Safety number (E2E verification)
+
+	@State private var showFullSafetyNumber = false
+
+	private var safetyNumber: String? {
+		guard let hs = vm.e2eHandshake else { return nil }
+		return E2ECrypto.shared.safetyNumber(handshake: hs, myUserId: vm.currentUserId)
+	}
+
+	@ViewBuilder
+	private var safetyNumberCard: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			Label("Отпечаток безопасности", systemImage: "checkmark.shield.fill")
+				.font(.subheadline.weight(.semibold))
+				.foregroundStyle(ChatDetailView.accent)
+
+			if let sn = safetyNumber {
+				Text(sn)
+					.font(.system(.footnote, design: .monospaced))
+					.textSelection(.enabled)
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.padding(10)
+					.background(Color(.secondarySystemBackground))
+					.clipShape(RoundedRectangle(cornerRadius: 10))
+				Text("Сверьте это число с собеседником вслух или при встрече. Если оно совпадает — переписку никто не читает посередине. Если разное — соединение перехвачено.")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			} else {
+				Text("Отпечаток недоступен — ключи ещё не загружены.")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
+		}
 	}
 
 	// MARK: – Quick actions row (mute / block)
