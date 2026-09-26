@@ -71,24 +71,55 @@ async def test_legacy_plaintext_dm_upgrades_to_e2e(client, register_user):
     assert r.json()["e2e_handshake"] is None
 
     r = await client.post(f"/chats/{chat_id}/messages", json={"content": "старое сообщение"}, headers=a.headers)
-    assert r.status_code == 200  # plaintext всё ещё принимается — handshake нет
+    assert r.status_code == 200  # plaintext всё ещё принимается — чат не E2E
 
-    # Публикуем ключи и повторяем POST /chats с eph_pub → тот же чат, но E2E.
-    await _publish_key(client, a)
-    await _publish_key(client, b)
-    eph = _b64()
-    r = await client.post("/chats", json={"user_id": b.id, "eph_pub": eph}, headers=a.headers)
+    # Стадия 3c: DM становится E2E, как только у обеих сторон есть device-ключи.
+    # Регистрируем устройства и снова обращаемся к чату → до-обновление до E2E.
+    await client.put("/e2e/devices", json={"device_id": "a1", "public_key": _b64()}, headers=a.headers)
+    await client.put("/e2e/devices", json={"device_id": "b1", "public_key": _b64()}, headers=b.headers)
+    r = await client.post("/chats", json={"user_id": b.id}, headers=a.headers)
     assert r.status_code == 200, r.text
     assert r.json()["id"] == chat_id  # тот же самый DM
-    hs = r.json()["e2e_handshake"]
-    assert hs is not None and hs["eph_pub"] == eph and hs["creator_id"] == a.id
+    assert r.json()["is_e2e"] is True
 
-    # Теперь plaintext запрещён, а шифроблоб — принимается.
+    # Теперь plaintext запрещён, а шифроблоб (sender keys) — принимается.
     r = await client.post(f"/chats/{chat_id}/messages", json={"content": "снова открыто"}, headers=a.headers)
     assert r.status_code == 400
     blob = base64.b64encode(os.urandom(48)).decode()
-    r = await client.post(f"/chats/{chat_id}/messages", json={"encrypted_payload": blob}, headers=b.headers)
+    r = await client.post(
+        f"/chats/{chat_id}/messages",
+        json={"encrypted_payload": blob, "sender_device_id": "b1"},
+        headers=b.headers,
+    )
     assert r.status_code == 200, r.text
+
+
+async def test_new_dm_with_device_keys_is_e2e_sender_keys(client, register_user):
+    """Стадия 3c: DM унифицирован на sender keys — E2E, если у обеих сторон
+    есть device-ключи, без всякого handshake/eph_pub."""
+    a = await register_user("d3_a")
+    b = await register_user("d3_b")
+    await client.put("/e2e/devices", json={"device_id": "a1", "public_key": _b64()}, headers=a.headers)
+    await client.put("/e2e/devices", json={"device_id": "b1", "public_key": _b64()}, headers=b.headers)
+
+    r = await client.post("/chats", json={"user_id": b.id}, headers=a.headers)  # без eph_pub
+    assert r.status_code == 200, r.text
+    assert r.json()["type"] == "private"
+    assert r.json()["is_e2e"] is True
+    assert r.json()["e2e_handshake"] is None  # handshake больше не нужен
+    chat_id = r.json()["id"]
+
+    # Plaintext запрещён; шифроблоб c sender_device_id принимается.
+    r = await client.post(f"/chats/{chat_id}/messages", json={"content": "x"}, headers=a.headers)
+    assert r.status_code == 400
+    blob = base64.b64encode(os.urandom(48)).decode()
+    r = await client.post(
+        f"/chats/{chat_id}/messages",
+        json={"encrypted_payload": blob, "sender_device_id": "a1"},
+        headers=a.headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["message"]["sender_device_id"] == "a1"
 
 
 async def test_private_chat_without_keys_stays_plaintext(client, register_user):

@@ -84,6 +84,20 @@ async def _check_can_message(db: AsyncSession, sender_id: int, recipient_id: int
     )
 
 
+async def _both_have_device_keys(db: AsyncSession, user1: int, user2: int) -> bool:
+    """Оба пользователя зарегистрировали хотя бы одно устройство (мультидевайс).
+
+    Условие «DM шифруется»: если у сторон есть device-ключи (реальные клиенты
+    регистрируют их на старте) — чат E2E на sender keys. Иначе остаётся
+    plaintext (синтетические юзеры/старые клиенты без ключей).
+    """
+    from models.e2e_device import E2EDevice
+    rows = (await db.execute(
+        select(E2EDevice.user_id).where(E2EDevice.user_id.in_([user1, user2]))
+    )).scalars().all()
+    return {user1, user2}.issubset(set(rows))
+
+
 async def _build_handshake(
     db: AsyncSession, creator_id: int, peer_id: int, eph_pub: str
 ) -> dict | None:
@@ -129,22 +143,17 @@ async def create_chat(
         other_id = user_list[0] if user_list[1] == creator_id else user_list[1]
 
         # Return existing chat immediately — no privacy check needed.
-        # Legacy-DM без handshake (старая plaintext-переписка после миграции)
-        # до-обновляем до E2E: инициатор становится creator'ом, привязываем
-        # handshake к уже существующему чату. Кто первый взял advisory-lock —
-        # тот и creator; проигравший потом выведет ключ peer-путём из handshake.
+        # Стадия 3c: DM унифицированы на sender keys (как группа из 2). Любой
+        # приватный чат — E2E; ключи раздают клиенты, handshake больше не нужен.
+        # Legacy-DM без is_e2e до-обновляем до E2E при обращении.
         existing = await get_private_chat_between(db, creator_id, other_id)
         if existing:
-            if existing.e2e_handshake is None and eph_pub is not None:
-                await lock_private_pair(db, creator_id, other_id)
+            # До-обновляем legacy-DM до E2E, как только у обеих сторон появились
+            # device-ключи (например, оба зашли обновлённым клиентом).
+            if not existing.is_e2e and await _both_have_device_keys(db, creator_id, other_id):
+                existing.is_e2e = True
+                await db.commit()
                 await db.refresh(existing)
-                if existing.e2e_handshake is None:
-                    hs = await _build_handshake(db, creator_id, other_id, eph_pub)
-                    if hs is not None:
-                        existing.e2e_handshake = hs
-                        existing.is_e2e = True
-                        await db.commit()
-                        await db.refresh(existing)
             return existing
 
         # New chat: enforce messaging privacy + block check.
@@ -158,12 +167,15 @@ async def create_chat(
         if existing:
             return existing
 
-        # Новый DM: если есть eph_pub и ключи у обоих — сразу E2E (type=private,
-        # но с handshake). Иначе legacy-plaintext.
+        # Новый DM: E2E на sender keys, если у обеих сторон есть device-ключи.
+        # eph_pub принимаем для обратной совместимости со старым клиентом
+        # (handshake ему нужен, чтобы читать свою же историю), но шифрование
+        # DM теперь на sender keys и от него не зависит.
         handshake = None
         if eph_pub is not None:
             handshake = await _build_handshake(db, creator_id, other_id, eph_pub)
-        chat = Chat(title=title, e2e_handshake=handshake, is_e2e=handshake is not None)
+        is_e2e = handshake is not None or await _both_have_device_keys(db, creator_id, other_id)
+        chat = Chat(title=title, e2e_handshake=handshake, is_e2e=is_e2e)
         db.add(chat)
         await db.flush()
 

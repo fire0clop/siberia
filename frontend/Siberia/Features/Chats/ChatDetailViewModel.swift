@@ -114,8 +114,6 @@ final class ChatDetailViewModel: ObservableObject {
 	/// диск, деривация ключа — на этот признак, не на литеральный тип.
 	/// isSecretChat/handshake — как ранний сигнал, пока detail не подгрузился.
 	var isEncrypted: Bool { chatIsE2E || isSecretChat || e2eHandshake != nil }
-	/// Группа со сквозным шифрованием — путь sender keys (а не общий ключ DM).
-	var isEncryptedGroup: Bool { isEncrypted && isGroup }
 	/// 1-на-1 чат (обычный или секретный) — партнёрский заголовок, presence, звонки
 	var isDirectChat: Bool { isPrivateChat || isSecretChat }
 	/// Handshake секретного чата (для деривации ключа)
@@ -440,62 +438,59 @@ final class ChatDetailViewModel: ObservableObject {
 	}
 
 	/// Расшифровка входящих в памяти (на диск шифрованные чаты не кешируются).
-	/// Роутер: группа — путь sender keys (async), DM — общий ключ чата (sync).
+	/// Стадия 3c — маршрут ПО СООБЩЕНИЮ: есть sender_device_id → путь sender
+	/// keys (DM и группы, мультидевайс); нет → legacy общий ключ чата (старая
+	/// история секретных/handshake-DM). Так mixed-история читается целиком.
 	func decryptIncomingIfNeeded() async {
 		guard isEncrypted else { return }
-		if isEncryptedGroup {
-			await decryptGroupMessages()
-		} else {
-			decryptSecretMessages()
-		}
+		let senderKeyIds = messages
+			.filter { ($0.text == nil || $0.text == "🔒 …") && $0.encryptedPayload != nil && $0.senderDeviceId != nil }
+			.map(\.id)
+		for id in senderKeyIds { await decryptViaSenderKey(id: id) }
+		decryptLegacyChatKeyMessages()
 	}
 
-	/// DM: расшифровка общим ключом чата (handshake). Только 1-на-1.
-	func decryptSecretMessages() {
-		guard isEncrypted, !isGroup else { return }
+	/// Legacy DM/секретные сообщения без sender_device_id — общим ключом чата.
+	func decryptSecretMessages() { decryptLegacyChatKeyMessages() }
+
+	private func decryptLegacyChatKeyMessages() {
+		guard isEncrypted else { return }
 		let key = secretChatKey()
 		for i in messages.indices {
-			guard messages[i].text == nil, let blob = messages[i].encryptedPayload else { continue }
+			guard messages[i].text == nil,
+			      messages[i].senderDeviceId == nil,
+			      let blob = messages[i].encryptedPayload else { continue }
 			if let key {
 				messages[i].text = E2ECore.decrypt(blobB64: blob, key: key) ?? "🔒 Не удалось расшифровать"
 			} else {
-				// Ключа нет (переустановка/новое устройство) — v1-ограничение
 				messages[i].text = "🔒 Не удалось расшифровать"
 			}
 		}
 	}
 
-	/// Группа: каждое сообщение расшифровывается sender-key своего отправителя
+	/// Сообщение с sender_device_id: расшифровка sender-key отправителя
 	/// (chat, fromUser, fromDevice, epoch). Ключ может дотягиваться с сервера.
-	func decryptGroupMessages() async {
-		guard isEncryptedGroup else { return }
-		let ids = messages
-			.filter { ($0.text == nil || $0.text == "🔒 …") && $0.encryptedPayload != nil }
-			.map(\.id)
-		for id in ids { await decryptGroupMessage(id: id) }
-	}
-
-	func decryptGroupMessage(id: Int) async {
-		guard isEncryptedGroup,
+	func decryptViaSenderKey(id: Int) async {
+		guard isEncrypted,
 		      let idx0 = messages.firstIndex(where: { $0.id == id }),
 		      let blob = messages[idx0].encryptedPayload,
 		      let fromUser = messages[idx0].userId,
 		      let fromDevice = messages[idx0].senderDeviceId,
 		      let epoch = E2ECore.groupEnvelopeEpoch(blob)
-		else { setGroupText(id: id, "🔒 Не удалось расшифровать"); return }
+		else { setDecryptedText(id: id, "🔒 Не удалось расшифровать"); return }
 
 		let key = await E2ECrypto.shared.groupSenderKey(
 			chatId: chatId, fromUserId: fromUser, fromDeviceId: fromDevice,
 			epoch: epoch, myUserId: currentUserId
 		)
 		if let key {
-			setGroupText(id: id, E2ECore.decryptGroup(blob, senderKey: key) ?? "🔒 Не удалось расшифровать")
+			setDecryptedText(id: id, E2ECore.decryptGroup(blob, senderKey: key) ?? "🔒 Не удалось расшифровать")
 		} else {
-			setGroupText(id: id, "🔒 Не удалось расшифровать")
+			setDecryptedText(id: id, "🔒 Не удалось расшифровать")
 		}
 	}
 
-	private func setGroupText(id: Int, _ text: String) {
+	private func setDecryptedText(id: Int, _ text: String) {
 		if let idx = messages.firstIndex(where: { $0.id == id }) { messages[idx].text = text }
 	}
 
@@ -542,12 +537,9 @@ final class ChatDetailViewModel: ObservableObject {
 			e2eHandshake = detail.e2eHandshake
 			chatIsE2E = detail.isE2E ?? false
 		}
-		if isEncryptedGroup {
-			await sendGroupEncrypted(raw)
-			return
-		}
+		// Стадия 3c: все E2E-чаты (DM и группы) шифруются через sender keys.
 		if isEncrypted {
-			await sendSecret(raw)
+			await sendEncryptedMessage(raw)
 			return
 		}
 		// Markdown → чистый текст + entities (Telegram-модель: сервер и другие
@@ -600,43 +592,11 @@ final class ChatDetailViewModel: ObservableObject {
 		}
 	}
 
-	/// Отправка в секретный чат: шифруем локально, plaintext сервера не достигает.
-	/// Persistent-очередь НЕ используется (plaintext на диск нельзя) —
-	/// при ошибке сети сообщение остаётся в композере.
-	private func sendSecret(_ plaintext: String) async {
-		guard let key = secretChatKey() else {
-			error = "Ключ секретного чата недоступен на этом устройстве"
-			return
-		}
-		let blob: String
-		do {
-			blob = try E2ECore.encrypt(text: plaintext, key: key)
-		} catch {
-			self.error = "Не удалось зашифровать сообщение"
-			return
-		}
-		let savedDraft = draft
-		draft = ""
-		replyingTo = nil
-		do {
-			let r = try await ChatService.shared.sendMessage(
-				chatId: chatId, text: nil,
-				clientMessageId: UUID(),
-				encryptedPayload: blob
-			)
-			var msg = r.message.withResolvedChatId(chatId)
-			msg.text = plaintext  // своё сообщение показываем сразу
-			upsert(msg)
-			scrollToBottomSignal += 1
-		} catch {
-			draft = savedDraft
-			self.error = error.localizedDescription
-		}
-	}
-
-	/// Отправка в шифрованную ГРУППУ (sender keys): гарантируем свой sender-key
-	/// и его раздачу участникам, затем шифруем под ним. Медиа/разметки нет (v1).
-	private func sendGroupEncrypted(_ plaintext: String) async {
+	/// Отправка в любой E2E-чат (DM или группа) через sender keys: гарантируем
+	/// свой sender-key и его раздачу устройствам участников, затем шифруем под
+	/// ним. Медиа/разметки нет (v1). Для DM member-devices вернёт устройства
+	/// обеих сторон — то есть шифрование идёт на все устройства (мультидевайс).
+	private func sendEncryptedMessage(_ plaintext: String) async {
 		guard let (key, epoch) = await E2ECrypto.shared.ensureGroupSenderKey(chatId: chatId) else {
 			error = "Не удалось подготовить ключ группы"
 			return

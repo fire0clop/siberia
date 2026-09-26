@@ -112,19 +112,21 @@ extension ChatDetailViewModel {
 
 				if !messages.contains(where: { $0.id == resolved.id }) {
 					var incoming = resolved
-					if isEncryptedGroup, incoming.text == nil, incoming.encryptedPayload != nil {
-						// Групповой sender-key резолвится асинхронно (может тянуть
-						// SKDM с сервера) — показываем плейсхолдер, дорасшифруем ниже.
-						incoming.text = "🔒 …"
-						upsert(incoming)
-						Task { [weak self] in await self?.decryptGroupMessage(id: incoming.id) }
-					} else if isEncrypted, incoming.text == nil, let blob = incoming.encryptedPayload {
-						if let key = secretChatKey() {
+					if isEncrypted, incoming.text == nil, let blob = incoming.encryptedPayload {
+						if incoming.senderDeviceId != nil {
+							// sender-key: резолвится асинхронно (может тянуть SKDM) —
+							// плейсхолдер, дорасшифруем в фоне.
+							incoming.text = "🔒 …"
+							upsert(incoming)
+							Task { [weak self] in await self?.decryptViaSenderKey(id: incoming.id) }
+						} else if let key = secretChatKey() {
+							// legacy общий ключ чата (старая handshake-история)
 							incoming.text = E2ECore.decrypt(blobB64: blob, key: key) ?? "🔒 Не удалось расшифровать"
+							upsert(incoming)
 						} else {
 							incoming.text = "🔒 Не удалось расшифровать"
+							upsert(incoming)
 						}
-						upsert(incoming)
 					} else {
 						upsert(incoming)
 					}
