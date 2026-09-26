@@ -344,6 +344,150 @@ final class E2ECrypto {
 	/// device_id этого устройства (стабильный per-install).
 	var myDeviceId: String { DeviceIDStorage.shared.deviceId }
 
+	// MARK: – Double Ratchet сессии для DM (стадия 4c)
+
+	private func drAccount(_ peerUserId: Int, _ peerDeviceId: String) -> String {
+		"dr_\(peerUserId)_\(peerDeviceId)"
+	}
+
+	/// Симметричный ключ для расшифровки СВОИХ же DM-сообщений на этом
+	/// устройстве (E2E не кеширует plaintext на диск). Создаётся один раз.
+	private func dmSelfKey() -> SymmetricKey {
+		if let raw = readData("dm_self_key") { return SymmetricKey(data: raw) }
+		let key = SymmetricKey(size: .bits256)
+		writeData(key.withUnsafeBytes { Data($0) }, "dm_self_key")
+		return key
+	}
+
+	private func loadDRSession(_ peerUserId: Int, _ peerDeviceId: String) -> DoubleRatchetState? {
+		guard let data = readData(drAccount(peerUserId, peerDeviceId)) else { return nil }
+		return try? JSONDecoder().decode(DoubleRatchetState.self, from: data)
+	}
+
+	private func saveDRSession(_ state: DoubleRatchetState, _ peerUserId: Int, _ peerDeviceId: String) {
+		guard let data = try? JSONEncoder().encode(state) else { return }
+		writeData(data, drAccount(peerUserId, peerDeviceId))
+	}
+
+	/// Начальный общий секрет пары устройств (X3DH-lite): HKDF по DH наших
+	/// identity-ключей. Симметричен — обе стороны получают один SK.
+	private func drSharedSecret(peerIdentityPub: Curve25519.KeyAgreement.PublicKey) -> Data? {
+		guard let ss = try? identityKey().sharedSecretFromKeyAgreement(with: peerIdentityPub) else { return nil }
+		let dh = ss.withUnsafeBytes { Data($0) }
+		let okm = HKDF<SHA256>.deriveKey(
+			inputKeyMaterial: SymmetricKey(data: dh),
+			salt: Data("siberia-dr-init-v1".utf8),
+			info: Data(),
+			outputByteCount: 32
+		)
+		return okm.withUnsafeBytes { Data($0) }
+	}
+
+	/// Шифрует plaintext для конкретного устройства собеседника через его
+	/// DR-сессию (создаёт её как инициатор при первом обращении). Возвращает
+	/// DR-конверт или nil.
+	func drEncrypt(peerUserId: Int, peerDeviceId: String, peerIdentityPubB64: String,
+	               plaintext: String, ad: Data) -> String? {
+		guard let peerPub = E2ECore.publicKey(fromB64: peerIdentityPubB64) else { return nil }
+		var state: DoubleRatchetState
+		if let s = loadDRSession(peerUserId, peerDeviceId) {
+			state = s
+		} else {
+			// Инициатор: SK + identity-pub получателя как стартовый ratchet-ключ.
+			guard let sk = drSharedSecret(peerIdentityPub: peerPub),
+			      let s = DoubleRatchet.initSender(sharedSecret: sk, peerRatchetPub: peerPub.rawRepresentation)
+			else { return nil }
+			state = s
+		}
+		guard let env = DoubleRatchet.encrypt(state: &state, plaintext: plaintext, ad: ad) else { return nil }
+		saveDRSession(state, peerUserId, peerDeviceId)
+		return env
+	}
+
+	/// Расшифровывает DR-конверт от устройства собеседника (создаёт сессию как
+	/// получатель при первом обращении — своим identity-ключом как ratchet).
+	func drDecrypt(peerUserId: Int, peerDeviceId: String, peerIdentityPubB64: String,
+	               envelope: String, ad: Data) -> String? {
+		var state: DoubleRatchetState
+		if let s = loadDRSession(peerUserId, peerDeviceId) {
+			state = s
+		} else {
+			guard let peerPub = E2ECore.publicKey(fromB64: peerIdentityPubB64),
+			      let sk = drSharedSecret(peerIdentityPub: peerPub) else { return nil }
+			let me = identityKey()
+			state = DoubleRatchet.initReceiver(
+				sharedSecret: sk,
+				ownRatchetPriv: me.rawRepresentation,
+				ownRatchetPub: me.publicKey.rawRepresentation
+			)
+		}
+		guard let pt = DoubleRatchet.decrypt(state: &state, envelopeB64: envelope, ad: ad) else { return nil }
+		saveDRSession(state, peerUserId, peerDeviceId)
+		return pt
+	}
+
+	/// Готовит DM-сообщение (Double Ratchet, мультидевайс): шифрует plaintext
+	/// ОТДЕЛЬНО для каждого устройства обеих сторон (кроме своего текущего) и
+	/// упаковывает в конверт {"v":4,"dr":{deviceId: env}}. Возвращает payload
+	/// и мой device_id (sender_device_id).
+	func sendableDMPayload(plaintext: String, chatId: Int) async -> (payload: String, senderDeviceId: String)? {
+		let devices: [E2EMemberDevice]
+		do {
+			let data = try await APIClient.shared.request(path: "/chats/\(chatId)/member-devices", method: "GET")
+			devices = (try APIClient.shared.decode(E2EMemberDevicesResponse.self, from: data)).devices
+		} catch { return nil }
+		let ad = Data("chat:\(chatId)".utf8)
+		var map: [String: String] = [:]
+		for d in devices where d.deviceId != myDeviceId {
+			if let env = drEncrypt(peerUserId: d.userId, peerDeviceId: d.deviceId,
+			                       peerIdentityPubB64: d.publicKey, plaintext: plaintext, ad: ad) {
+				map[d.deviceId] = env
+			}
+		}
+		// Своя доля: E2E не кеширует plaintext на диск, поэтому кладём копию под
+		// self-ключом (Keychain) — иначе своё же сообщение не прочесть после
+		// перезапуска. Помечаем префиксом "self:" (не DR-конверт).
+		if let selfBlob = try? E2ECore.encrypt(text: plaintext, key: dmSelfKey()) {
+			map[myDeviceId] = "self:" + selfBlob
+		}
+		guard !map.isEmpty else { return nil }
+		guard let payload = try? JSONSerialization.data(withJSONObject: ["v": 4, "dr": map]).base64EncodedString()
+		else { return nil }
+		return (payload, myDeviceId)
+	}
+
+	/// Расшифровывает DM-конверт Double Ratchet: берёт свою долю из "dr" и
+	/// прогоняет через DR-сессию с устройством отправителя. nil — не для меня
+	/// или ключ не сходится.
+	func decryptDMPayload(payloadB64: String, chatId: Int, fromUserId: Int, fromDeviceId: String) async -> String? {
+		guard let data = Data(base64Encoded: payloadB64),
+		      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+		      let map = obj["dr"] as? [String: String],
+		      let myEnv = map[myDeviceId] else { return nil }
+		// Своё сообщение: доля под self-ключом, не DR.
+		if myEnv.hasPrefix("self:") {
+			return E2ECore.decrypt(blobB64: String(myEnv.dropFirst(5)), key: dmSelfKey())
+		}
+		// identity-pub отправителя — из member-devices
+		var senderPub: String?
+		if let md = try? await APIClient.shared.request(path: "/chats/\(chatId)/member-devices", method: "GET"),
+		   let list = try? APIClient.shared.decode(E2EMemberDevicesResponse.self, from: md) {
+			senderPub = list.devices.first { $0.userId == fromUserId && $0.deviceId == fromDeviceId }?.publicKey
+		}
+		guard let senderPub else { return nil }
+		let ad = Data("chat:\(chatId)".utf8)
+		return drDecrypt(peerUserId: fromUserId, peerDeviceId: fromDeviceId,
+		                 peerIdentityPubB64: senderPub, envelope: myEnv, ad: ad)
+	}
+
+	/// true, если payload — DM-конверт Double Ratchet (стадия 4c).
+	static func isDRPayload(_ payloadB64: String) -> Bool {
+		guard let data = Data(base64Encoded: payloadB64),
+		      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+		else { return false }
+		return obj["dr"] is [String: String]
+	}
+
 	// MARK: – Бэкап/восстановление identity-ключа (стадия 4b)
 
 	/// Кладёт на сервер зашифрованный под пассфразу бэкап identity-ключа.

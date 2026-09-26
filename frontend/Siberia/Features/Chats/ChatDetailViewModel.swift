@@ -468,17 +468,27 @@ final class ChatDetailViewModel: ObservableObject {
 		}
 	}
 
-	/// Сообщение с sender_device_id: расшифровка sender-key отправителя
-	/// (chat, fromUser, fromDevice, epoch). Ключ может дотягиваться с сервера.
+	/// Сообщение с sender_device_id. Личный чат с DR-конвертом → Double Ratchet
+	/// (4c); иначе (группа или старый DM-формат) → sender-key отправителя (3b).
 	func decryptViaSenderKey(id: Int) async {
 		guard isEncrypted,
 		      let idx0 = messages.firstIndex(where: { $0.id == id }),
 		      let blob = messages[idx0].encryptedPayload,
 		      let fromUser = messages[idx0].userId,
-		      let fromDevice = messages[idx0].senderDeviceId,
-		      let epoch = E2ECore.groupEnvelopeEpoch(blob)
+		      let fromDevice = messages[idx0].senderDeviceId
 		else { setDecryptedText(id: id, "🔒 Не удалось расшифровать"); return }
 
+		if !isGroup && E2ECrypto.isDRPayload(blob) {
+			let pt = await E2ECrypto.shared.decryptDMPayload(
+				payloadB64: blob, chatId: chatId, fromUserId: fromUser, fromDeviceId: fromDevice
+			)
+			setDecryptedText(id: id, pt ?? "🔒 Не удалось расшифровать")
+			return
+		}
+
+		guard let epoch = E2ECore.groupEnvelopeEpoch(blob) else {
+			setDecryptedText(id: id, "🔒 Не удалось расшифровать"); return
+		}
 		let key = await E2ECrypto.shared.groupSenderKey(
 			chatId: chatId, fromUserId: fromUser, fromDeviceId: fromDevice,
 			epoch: epoch, myUserId: currentUserId
@@ -537,9 +547,10 @@ final class ChatDetailViewModel: ObservableObject {
 			e2eHandshake = detail.e2eHandshake
 			chatIsE2E = detail.isE2E ?? false
 		}
-		// Стадия 3c: все E2E-чаты (DM и группы) шифруются через sender keys.
+		// E2E: группы — sender keys (3b); личные — Double Ratchet (4c).
 		if isEncrypted {
-			await sendEncryptedMessage(raw)
+			if isGroup { await sendEncryptedMessage(raw) }
+			else { await sendDMviaRatchet(raw) }
 			return
 		}
 		// Markdown → чистый текст + entities (Telegram-модель: сервер и другие
@@ -588,6 +599,31 @@ final class ChatDetailViewModel: ObservableObject {
 			// Не удаляем из persistent-очереди — переотправим при reconnect.
 			// В UI оставляем pending bubble.
 			Log.chat.warning("send failed, will retry on reconnect: \(String(describing: error))")
+			self.error = error.localizedDescription
+		}
+	}
+
+	/// Отправка в личный E2E-чат через Double Ratchet (стадия 4c): шифруем
+	/// отдельно для каждого устройства собеседника и своих (мультидевайс).
+	private func sendDMviaRatchet(_ plaintext: String) async {
+		guard let (payload, deviceId) = await E2ECrypto.shared.sendableDMPayload(plaintext: plaintext, chatId: chatId) else {
+			error = "Не удалось подготовить ключи собеседника"
+			return
+		}
+		let savedDraft = draft
+		draft = ""
+		replyingTo = nil
+		do {
+			let r = try await ChatService.shared.sendMessage(
+				chatId: chatId, text: nil, clientMessageId: UUID(),
+				encryptedPayload: payload, senderDeviceId: deviceId
+			)
+			var msg = r.message.withResolvedChatId(chatId)
+			msg.text = plaintext
+			upsert(msg)
+			scrollToBottomSignal += 1
+		} catch {
+			draft = savedDraft
 			self.error = error.localizedDescription
 		}
 	}
