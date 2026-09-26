@@ -129,6 +129,18 @@ struct E2EHandshake: Codable, Equatable, Hashable {
 	let peerIdentityPub: String
 }
 
+// MARK: – Мультидевайс (стадия 3): устройства пользователя
+
+struct E2EDeviceInfo: Codable, Equatable, Hashable {
+	let deviceId: String
+	let publicKey: String
+}
+
+struct E2EDeviceListResponse: Codable {
+	let userId: Int
+	let devices: [E2EDeviceInfo]
+}
+
 // MARK: – Сервис (Keychain + API)
 
 @MainActor
@@ -207,6 +219,8 @@ final class E2ECrypto {
 	}
 
 	/// Публикует публичный ключ на бэке (идемпотентно, best-effort).
+	/// Стадия 3: помимо legacy-ключа (/e2e/keys, один на юзера) регистрирует
+	/// ключ ЭТОГО устройства в реестре мультидевайса (/e2e/devices).
 	func publishKeyIfNeeded() async {
 		let pub = E2ECore.publicKeyB64(identityKey())
 		do {
@@ -215,7 +229,31 @@ final class E2ECrypto {
 		} catch {
 			Log.auth.warning("E2E key publish failed: \(String(describing: error))")
 		}
+		do {
+			let body = try JSONSerialization.data(withJSONObject: [
+				"device_id": DeviceIDStorage.shared.deviceId,
+				"public_key": pub,
+			])
+			_ = try await APIClient.shared.request(path: "/e2e/devices", method: "PUT", body: body)
+		} catch {
+			Log.auth.warning("E2E device publish failed: \(String(describing: error))")
+		}
 	}
+
+	/// Устройства собеседника (мультидевайс): (device_id, публичный ключ).
+	/// Пустой список — собеседник ещё не регистрировал ни одного устройства.
+	func peerDevices(userId: Int) async -> [E2EDeviceInfo] {
+		do {
+			let data = try await APIClient.shared.request(path: "/e2e/devices/\(userId)", method: "GET")
+			return (try APIClient.shared.decode(E2EDeviceListResponse.self, from: data)).devices
+		} catch {
+			Log.auth.warning("E2E devices fetch failed: \(String(describing: error))")
+			return []
+		}
+	}
+
+	/// device_id этого устройства (стабильный per-install).
+	var myDeviceId: String { DeviceIDStorage.shared.deviceId }
 
 	// MARK: Chat keys
 
