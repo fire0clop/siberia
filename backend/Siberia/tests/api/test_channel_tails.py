@@ -71,13 +71,24 @@ async def test_admin_can_delete_others_messages(client, register_user):
     )
     chat_id = r.json()["id"]
 
+    # Группы теперь E2E: контент — непрозрачный шифроблоб. Модерация (удаление)
+    # работает по метаданным и от контента не зависит.
+    import base64
+    import os
+    def _blob():
+        return base64.b64encode(os.urandom(64)).decode()
+
     msg_id = (await client.post(
-        f"/chats/{chat_id}/messages", json={"content": "нарушение правил"}, headers=member.headers
+        f"/chats/{chat_id}/messages",
+        json={"encrypted_payload": _blob(), "sender_device_id": "m1"},
+        headers=member.headers,
     )).json()["message"]["id"]
 
     # Обычный участник чужое удалить не может (member удаляет сообщение owner'а)
     own_msg = (await client.post(
-        f"/chats/{chat_id}/messages", json={"content": "от владельца"}, headers=owner.headers
+        f"/chats/{chat_id}/messages",
+        json={"encrypted_payload": _blob(), "sender_device_id": "o1"},
+        headers=owner.headers,
     )).json()["message"]["id"]
     r = await client.delete(f"/messages/{own_msg}", headers=member.headers)
     assert r.status_code == 403

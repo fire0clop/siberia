@@ -60,7 +60,10 @@ async def create_group_chat(
     if missing:
         raise HTTPException(status_code=404, detail=f"Users not found: {missing}")
 
-    chat = Chat(type=ChatType.group, title=title, description=description)
+    # Стадия 3b: новые группы шифруются end-to-end (sender keys). Ключи
+    # раздают сами клиенты; сервер контента не видит (системные сообщения —
+    # метаданные — остаются открытыми, они и генерятся сервером).
+    chat = Chat(type=ChatType.group, title=title, description=description, is_e2e=True)
     db.add(chat)
     await db.flush()
 

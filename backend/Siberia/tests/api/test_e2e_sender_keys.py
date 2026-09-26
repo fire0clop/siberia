@@ -104,6 +104,55 @@ async def test_sender_key_upsert_by_epoch(client, register_user):
     assert by_epoch == {0: ct0b, 1: ct1}
 
 
+async def test_new_group_is_e2e_and_rejects_plaintext(client, register_user):
+    a = await register_user("ge_a")
+    b = await register_user("ge_b")
+    chat_id = await _group(client, a, [b])
+
+    # Группа помечена шифрованной
+    r = await client.get(f"/chats/{chat_id}", headers=a.headers)
+    assert r.json()["is_e2e"] is True
+
+    # Plaintext в E2E-группу → 400
+    r = await client.post(f"/chats/{chat_id}/messages", json={"content": "открыто"}, headers=a.headers)
+    assert r.status_code == 400
+
+    # Шифроблоб + sender_device_id → ок, сервер отдаёт непрозрачно
+    blob = _b64(64)
+    r = await client.post(
+        f"/chats/{chat_id}/messages",
+        json={"encrypted_payload": blob, "sender_device_id": "a1"},
+        headers=a.headers,
+    )
+    assert r.status_code == 200, r.text
+    msg = r.json()["message"]
+    assert msg["encrypted_payload"] == blob and msg["text"] is None
+    assert msg["sender_device_id"] == "a1"
+
+    # b читает блоб из истории с тем же sender_device_id
+    r = await client.get(f"/chats/{chat_id}/messages", headers=b.headers)
+    fetched = next(m for m in r.json() if m["id"] == msg["id"])
+    assert fetched["encrypted_payload"] == blob
+    assert fetched["sender_device_id"] == "a1"
+
+
+async def test_group_system_messages_stay_plaintext(client, register_user):
+    a = await register_user("gs_a")
+    b = await register_user("gs_b")
+    c = await register_user("gs_c")
+    chat_id = await _group(client, a, [b])
+
+    # Добавление участника рождает СИСТЕМНОЕ сообщение (метаданные, не контент) —
+    # оно открытым текстом, несмотря на E2E-группу.
+    r = await client.post(f"/chats/{chat_id}/members", json={"user_ids": [c.id]}, headers=a.headers)
+    assert r.status_code == 200, r.text
+
+    r = await client.get(f"/chats/{chat_id}/messages", headers=a.headers)
+    sys_msgs = [m for m in r.json() if m.get("type") == "system"]
+    assert sys_msgs, "системные сообщения группы должны оставаться видимыми"
+    assert any(m.get("text") for m in sys_msgs)
+
+
 async def test_sender_keys_require_membership(client, register_user):
     a = await register_user("sk4_a")
     b = await register_user("sk4_b")
