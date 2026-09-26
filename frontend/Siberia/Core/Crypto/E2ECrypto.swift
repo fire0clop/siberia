@@ -81,6 +81,72 @@ enum E2ECore {
 		return obj["text"] as? String
 	}
 
+	// MARK: – Групповое E2E (sender keys, стадия 3b)
+
+	static let skdmSalt = Data("siberia-skdm-v1".utf8)
+	static let skdmInfo = Data("siberia:skdm".utf8)
+
+	/// Заворачивает sender-key для устройства-получателя: X25519(мой_priv,
+	/// его_pub) → HKDF → AES-GCM(32 байта ключа). Возвращает base64-блоб.
+	static func wrapSenderKey(
+		_ senderKey: SymmetricKey,
+		myPriv: Curve25519.KeyAgreement.PrivateKey,
+		recipientPub: Curve25519.KeyAgreement.PublicKey
+	) throws -> String {
+		let shared = try myPriv.sharedSecretFromKeyAgreement(with: recipientPub)
+		let wrapKey = shared.hkdfDerivedSymmetricKey(
+			using: SHA256.self, salt: skdmSalt, sharedInfo: skdmInfo, outputByteCount: 32
+		)
+		let raw = senderKey.withUnsafeBytes { Data($0) }
+		let box = try AES.GCM.seal(raw, using: wrapKey)
+		guard let combined = box.combined else { throw CocoaError(.coderInvalidValue) }
+		return combined.base64EncodedString()
+	}
+
+	/// Разворачивает sender-key: X25519(мой_priv, pub_отправителя) — симметрично
+	/// wrap. nil при неверном ключе/повреждении.
+	static func unwrapSenderKey(
+		_ blobB64: String,
+		myPriv: Curve25519.KeyAgreement.PrivateKey,
+		senderPub: Curve25519.KeyAgreement.PublicKey
+	) -> SymmetricKey? {
+		guard let shared = try? myPriv.sharedSecretFromKeyAgreement(with: senderPub) else { return nil }
+		let wrapKey = shared.hkdfDerivedSymmetricKey(
+			using: SHA256.self, salt: skdmSalt, sharedInfo: skdmInfo, outputByteCount: 32
+		)
+		guard let combined = Data(base64Encoded: blobB64),
+		      let box = try? AES.GCM.SealedBox(combined: combined),
+		      let raw = try? AES.GCM.open(box, using: wrapKey),
+		      raw.count == 32
+		else { return nil }
+		return SymmetricKey(data: raw)
+	}
+
+	/// Групповое сообщение: внутренний AES-GCM под sender-key + конверт с эпохой,
+	/// чтобы получатель выбрал нужную версию ключа. base64({v,e,b}).
+	static func encryptGroup(text: String, senderKey: SymmetricKey, epoch: Int) throws -> String {
+		let inner = try encrypt(text: text, key: senderKey)
+		let env: [String: Any] = ["v": 1, "e": epoch, "b": inner]
+		return try JSONSerialization.data(withJSONObject: env).base64EncodedString()
+	}
+
+	/// Эпоха sender-key из группового конверта (для выбора ключа до расшифровки).
+	static func groupEnvelopeEpoch(_ blobB64: String) -> Int? {
+		guard let d = Data(base64Encoded: blobB64),
+		      let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+		else { return nil }
+		return o["e"] as? Int
+	}
+
+	/// Расшифровка группового сообщения выбранным sender-key. nil при несовпадении.
+	static func decryptGroup(_ blobB64: String, senderKey: SymmetricKey) -> String? {
+		guard let d = Data(base64Encoded: blobB64),
+		      let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+		      let inner = o["b"] as? String
+		else { return nil }
+		return decrypt(blobB64: inner, key: senderKey)
+	}
+
 	static func publicKeyB64(_ priv: Curve25519.KeyAgreement.PrivateKey) -> String {
 		priv.publicKey.rawRepresentation.base64EncodedString()
 	}
@@ -139,6 +205,29 @@ struct E2EDeviceInfo: Codable, Equatable, Hashable {
 struct E2EDeviceListResponse: Codable {
 	let userId: Int
 	let devices: [E2EDeviceInfo]
+}
+
+// MARK: – Групповое E2E: устройства участников и раздачи sender-key
+
+struct E2EMemberDevice: Codable, Equatable, Hashable {
+	let userId: Int
+	let deviceId: String
+	let publicKey: String
+}
+
+struct E2EMemberDevicesResponse: Codable {
+	let devices: [E2EMemberDevice]
+}
+
+struct E2ESenderKeyDist: Codable {
+	let fromUserId: Int
+	let fromDeviceId: String
+	let keyEpoch: Int
+	let ciphertext: String
+}
+
+struct E2ESenderKeysResponse: Codable {
+	let keys: [E2ESenderKeyDist]
 }
 
 // MARK: – Сервис (Keychain + API)
@@ -254,6 +343,138 @@ final class E2ECrypto {
 
 	/// device_id этого устройства (стабильный per-install).
 	var myDeviceId: String { DeviceIDStorage.shared.deviceId }
+
+	// MARK: – Групповые sender keys (стадия 3b)
+
+	// Свой sender-key по эпохам (нужно хранить старые, чтобы читать свою же
+	// историю после ротации) + указатель на текущую эпоху.
+	private func mySenderKeyAccount(_ chatId: Int, _ epoch: Int) -> String { "grp_send_\(chatId)_\(epoch)" }
+	private func myCurrentEpochKey(_ chatId: Int) -> String { "siberia_grp_epoch_\(chatId)" }
+	private func distSetKey(_ chatId: Int) -> String { "siberia_grp_distset_\(chatId)" }
+	// Полученный sender-key другого устройства по (chat, fromUser, fromDevice, epoch)
+	private func recvSenderKeyAccount(_ chatId: Int, _ fromUser: Int, _ fromDevice: String, _ epoch: Int) -> String {
+		"grp_recv_\(chatId)_\(fromUser)_\(fromDevice)_\(epoch)"
+	}
+
+	private func myCurrentEpoch(_ chatId: Int) -> Int? {
+		let v = UserDefaults.standard.object(forKey: myCurrentEpochKey(chatId)) as? Int
+		return v
+	}
+
+	private func mySenderKey(_ chatId: Int, epoch: Int) -> SymmetricKey? {
+		readData(mySenderKeyAccount(chatId, epoch)).map { SymmetricKey(data: $0) }
+	}
+
+	private func setMySenderKey(_ key: SymmetricKey, chatId: Int, epoch: Int) {
+		writeData(key.withUnsafeBytes { Data($0) }, mySenderKeyAccount(chatId, epoch))
+		UserDefaults.standard.set(epoch, forKey: myCurrentEpochKey(chatId))
+	}
+
+	/// Гарантирует, что у меня есть sender-key для группы и он роздан всем
+	/// текущим устройствам-участникам. Ротирует эпоху при смене набора устройств
+	/// (новый участник получит ключ; вышедший — перестанет читать новые эпохи).
+	/// Возвращает (ключ, эпоха) для шифрования, либо nil при ошибке.
+	@discardableResult
+	func ensureGroupSenderKey(chatId: Int) async -> (key: SymmetricKey, epoch: Int)? {
+		// Устройства всех участников (кроме моего текущего — себе слать не нужно)
+		let devices: [E2EMemberDevice]
+		do {
+			let data = try await APIClient.shared.request(path: "/chats/\(chatId)/member-devices", method: "GET")
+			devices = (try APIClient.shared.decode(E2EMemberDevicesResponse.self, from: data)).devices
+		} catch {
+			Log.auth.warning("member-devices fetch failed: \(String(describing: error))")
+			return nil
+		}
+		let recipients = devices.filter { $0.deviceId != myDeviceId }
+		let currentSet = Set(recipients.map { "\($0.userId):\($0.deviceId)" }).sorted().joined(separator: ",")
+		let lastSet = UserDefaults.standard.string(forKey: distSetKey(chatId))
+
+		var epoch = myCurrentEpoch(chatId) ?? 0
+		var key = mySenderKey(chatId, epoch: epoch)
+		let rosterChanged = (lastSet != nil && lastSet != currentSet)
+
+		if key == nil {
+			// первый ключ для чата
+			key = SymmetricKey(size: .bits256)
+			setMySenderKey(key!, chatId: chatId, epoch: epoch)
+		} else if rosterChanged {
+			// ротация: новая эпоха + новый ключ
+			epoch += 1
+			key = SymmetricKey(size: .bits256)
+			setMySenderKey(key!, chatId: chatId, epoch: epoch)
+		} else if lastSet == currentSet {
+			// набор не менялся и уже роздан — ничего не делаем
+			return (key!, epoch)
+		}
+
+		// Раздаём текущий ключ всем получателям
+		let myPriv = identityKey()
+		var dists: [[String: Any]] = []
+		for d in recipients {
+			guard let pub = E2ECore.publicKey(fromB64: d.publicKey),
+			      let wrapped = try? E2ECore.wrapSenderKey(key!, myPriv: myPriv, recipientPub: pub)
+			else { continue }
+			dists.append(["to_user_id": d.userId, "to_device_id": d.deviceId, "ciphertext": wrapped])
+		}
+		if !dists.isEmpty {
+			do {
+				let body = try JSONSerialization.data(withJSONObject: [
+					"from_device_id": myDeviceId,
+					"key_epoch": epoch,
+					"distributions": dists,
+				])
+				_ = try await APIClient.shared.request(path: "/chats/\(chatId)/sender-keys", method: "POST", body: body)
+			} catch {
+				Log.auth.warning("sender-key distribute failed: \(String(describing: error))")
+			}
+		}
+		UserDefaults.standard.set(currentSet, forKey: distSetKey(chatId))
+		return (key!, epoch)
+	}
+
+	/// sender-key для входящего группового сообщения от (fromUser, fromDevice)
+	/// на конкретную эпоху. Своё сообщение — из своего хранилища; чужое — из
+	/// полученных SKDM (при отсутствии дотягивает раздачи с сервера).
+	func groupSenderKey(chatId: Int, fromUserId: Int, fromDeviceId: String, epoch: Int, myUserId: Int?) async -> SymmetricKey? {
+		if fromUserId == myUserId && fromDeviceId == myDeviceId {
+			return mySenderKey(chatId, epoch: epoch)
+		}
+		if let stored = readData(recvSenderKeyAccount(chatId, fromUserId, fromDeviceId, epoch)) {
+			return SymmetricKey(data: stored)
+		}
+		// Дотягиваем SKDM, адресованные моему устройству, и разворачиваем.
+		await fetchAndStoreSenderKeys(chatId: chatId)
+		return readData(recvSenderKeyAccount(chatId, fromUserId, fromDeviceId, epoch)).map { SymmetricKey(data: $0) }
+	}
+
+	/// Забирает адресованные мне SKDM и разворачивает их своим приватным
+	/// ключом + pub отправителя (берём из member-devices).
+	private func fetchAndStoreSenderKeys(chatId: Int) async {
+		let skdms: [E2ESenderKeyDist]
+		var devicesByKey: [String: String] = [:]  // "user:device" → pub
+		do {
+			let mdData = try await APIClient.shared.request(path: "/chats/\(chatId)/member-devices", method: "GET")
+			for d in (try APIClient.shared.decode(E2EMemberDevicesResponse.self, from: mdData)).devices {
+				devicesByKey["\(d.userId):\(d.deviceId)"] = d.publicKey
+			}
+			let data = try await APIClient.shared.request(
+				path: "/chats/\(chatId)/sender-keys?device_id=\(myDeviceId)", method: "GET"
+			)
+			skdms = (try APIClient.shared.decode(E2ESenderKeysResponse.self, from: data)).keys
+		} catch {
+			Log.auth.warning("sender-keys fetch failed: \(String(describing: error))")
+			return
+		}
+		let myPriv = identityKey()
+		for s in skdms {
+			guard let pubB64 = devicesByKey["\(s.fromUserId):\(s.fromDeviceId)"],
+			      let senderPub = E2ECore.publicKey(fromB64: pubB64),
+			      let key = E2ECore.unwrapSenderKey(s.ciphertext, myPriv: myPriv, senderPub: senderPub)
+			else { continue }
+			writeData(key.withUnsafeBytes { Data($0) },
+			          recvSenderKeyAccount(chatId, s.fromUserId, s.fromDeviceId, s.keyEpoch))
+		}
+	}
 
 	// MARK: Chat keys
 

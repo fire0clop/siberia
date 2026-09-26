@@ -215,8 +215,10 @@ struct ChatSummary: Codable, Identifiable, Equatable {
 	/// Архив per-user (nil у старого бэка = не в архиве)
 	let isArchived: Bool?
 	/// E2E handshake: у секретных чатов и у обычных DM после стадии 2.
-	/// Наличие = чат шифруется end-to-end. nil у групп/каналов/legacy-plaintext.
+	/// Наличие = DM шифруется end-to-end. nil у групп/каналов/legacy-plaintext.
 	let e2eHandshake: E2EHandshake?
+	/// Единый признак сквозного шифрования (DM или группа с sender keys)
+	let isE2E: Bool?
 	// Nested object: { "last_message": { "text": "...", "created_at": "..." } }
 	let lastMessage: NestedMessage?
 
@@ -267,8 +269,10 @@ struct ChatDetail: Codable {
 	let pinnedMessageId: Int?
 	let syncSeq: Int
 	let draftText: String?
-	/// E2E handshake секретного чата
+	/// E2E handshake DM (секретный/приватный)
 	let e2eHandshake: E2EHandshake?
+	/// Единый признак сквозного шифрования (DM или группа с sender keys)
+	let isE2E: Bool?
 }
 
 // MARK: – Messages
@@ -307,8 +311,10 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 	var entities: [MessageEntity]? = nil
 	/// OG-превью первой ссылки (заполняется бэком асинхронно)
 	var linkPreview: LinkPreview? = nil
-	/// E2E-блоб (секретные чаты): base64(nonce||ct||tag); text приходит nil
+	/// E2E-блоб: DM — base64(nonce||ct||tag); группа — конверт {epoch,ct}. text nil.
 	var encryptedPayload: String? = nil
+	/// Устройство-отправитель (группы, sender keys) — выбор ключа получателем.
+	var senderDeviceId: String? = nil
 
 	var isDeleted: Bool { deleted ?? (deletedAt != nil) }
 	var hasMedia: Bool { mediaId != nil }
@@ -328,7 +334,7 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 			forwardedFromChatId: forwardedFromChatId,
 			mentionUserIds: mentionUserIds, reactions: reactions,
 			type: type, entities: entities, linkPreview: linkPreview,
-			encryptedPayload: encryptedPayload
+			encryptedPayload: encryptedPayload, senderDeviceId: senderDeviceId
 		)
 	}
 }
@@ -350,6 +356,7 @@ struct MessageSendBody: Encodable {
 	let mentionUserIds: [Int]?
 	var entities: [MessageEntity]? = nil
 	var encryptedPayload: String? = nil
+	var senderDeviceId: String? = nil
 }
 
 struct MessagePatchBody: Encodable {

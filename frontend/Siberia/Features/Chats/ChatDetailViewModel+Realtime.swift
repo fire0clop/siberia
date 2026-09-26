@@ -112,14 +112,22 @@ extension ChatDetailViewModel {
 
 				if !messages.contains(where: { $0.id == resolved.id }) {
 					var incoming = resolved
-					if isEncrypted, incoming.text == nil, let blob = incoming.encryptedPayload {
+					if isEncryptedGroup, incoming.text == nil, incoming.encryptedPayload != nil {
+						// Групповой sender-key резолвится асинхронно (может тянуть
+						// SKDM с сервера) — показываем плейсхолдер, дорасшифруем ниже.
+						incoming.text = "🔒 …"
+						upsert(incoming)
+						Task { [weak self] in await self?.decryptGroupMessage(id: incoming.id) }
+					} else if isEncrypted, incoming.text == nil, let blob = incoming.encryptedPayload {
 						if let key = secretChatKey() {
 							incoming.text = E2ECore.decrypt(blobB64: blob, key: key) ?? "🔒 Не удалось расшифровать"
 						} else {
 							incoming.text = "🔒 Не удалось расшифровать"
 						}
+						upsert(incoming)
+					} else {
+						upsert(incoming)
 					}
-					upsert(incoming)
 					if resolved.userId != currentUserId {
 						if isAtBottom {
 							// Чат открыт и пользователь внизу — сообщение прочитано.
@@ -295,7 +303,8 @@ extension ChatDetailViewModel {
 			reactions:                 nil,
 			type:                      payload["type"] as? String,
 			entities:                  parseEntities(payload["entities"]),
-			encryptedPayload:          payload["encrypted_payload"] as? String
+			encryptedPayload:          payload["encrypted_payload"] as? String,
+			senderDeviceId:            payload["sender_device_id"] as? String
 		)
 	}
 

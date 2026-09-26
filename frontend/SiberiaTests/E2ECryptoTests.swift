@@ -124,3 +124,66 @@ extension E2ECryptoTests {
 		XCTAssertNil(E2ECore.safetyNumber(Data([1,2,3]).base64EncodedString(), b64key()))
 	}
 }
+
+// MARK: – Групповое E2E (sender keys)
+
+extension E2ECryptoTests {
+
+	/// Отправитель заворачивает sender-key для получателя — получатель
+	/// разворачивает своим приватным + pub отправителя (X25519 симметричен).
+	func testSenderKeyWrapUnwrapRoundtrip() throws {
+		let sender = Curve25519.KeyAgreement.PrivateKey()
+		let recipient = Curve25519.KeyAgreement.PrivateKey()
+		let senderKey = SymmetricKey(size: .bits256)
+
+		let blob = try E2ECore.wrapSenderKey(
+			senderKey, myPriv: sender, recipientPub: recipient.publicKey
+		)
+		let unwrapped = E2ECore.unwrapSenderKey(
+			blob, myPriv: recipient, senderPub: sender.publicKey
+		)
+		XCTAssertNotNil(unwrapped)
+		XCTAssertEqual(
+			unwrapped!.withUnsafeBytes { Data($0) },
+			senderKey.withUnsafeBytes { Data($0) },
+			"развёрнутый sender-key обязан совпасть с исходным"
+		)
+	}
+
+	/// Чужое устройство (не адресат) развернуть не может.
+	func testSenderKeyUnwrapWrongRecipientFails() throws {
+		let sender = Curve25519.KeyAgreement.PrivateKey()
+		let recipient = Curve25519.KeyAgreement.PrivateKey()
+		let attacker = Curve25519.KeyAgreement.PrivateKey()
+		let blob = try E2ECore.wrapSenderKey(
+			SymmetricKey(size: .bits256), myPriv: sender, recipientPub: recipient.publicKey
+		)
+		XCTAssertNil(E2ECore.unwrapSenderKey(blob, myPriv: attacker, senderPub: sender.publicKey))
+		XCTAssertNil(E2ECore.unwrapSenderKey("не base64", myPriv: recipient, senderPub: sender.publicKey))
+	}
+
+	/// Полный групповой цикл: отправитель шифрует под sender-key, получатель,
+	/// развернув тот же ключ, читает; эпоха достаётся из конверта.
+	func testGroupMessageRoundtripViaSenderKey() throws {
+		let sender = Curve25519.KeyAgreement.PrivateKey()
+		let recipient = Curve25519.KeyAgreement.PrivateKey()
+		let senderKey = SymmetricKey(size: .bits256)
+		let epoch = 3
+
+		let wrapped = try E2ECore.wrapSenderKey(senderKey, myPriv: sender, recipientPub: recipient.publicKey)
+		let blob = try E2ECore.encryptGroup(text: "привет, группа 👥", senderKey: senderKey, epoch: epoch)
+
+		XCTAssertEqual(E2ECore.groupEnvelopeEpoch(blob), epoch)
+		let recovered = E2ECore.unwrapSenderKey(wrapped, myPriv: recipient, senderPub: sender.publicKey)!
+		XCTAssertEqual(E2ECore.decryptGroup(blob, senderKey: recovered), "привет, группа 👥")
+	}
+
+	/// Неверный sender-key (например, устаревшая эпоха) → nil, не мусор.
+	func testGroupMessageWrongSenderKeyFails() throws {
+		let blob = try E2ECore.encryptGroup(
+			text: "секрет", senderKey: SymmetricKey(size: .bits256), epoch: 0
+		)
+		XCTAssertNil(E2ECore.decryptGroup(blob, senderKey: SymmetricKey(size: .bits256)))
+		XCTAssertNil(E2ECore.groupEnvelopeEpoch("не конверт"))
+	}
+}
