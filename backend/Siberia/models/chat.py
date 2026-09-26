@@ -44,9 +44,14 @@ class Chat(Base):
 
     sync_seq = Column(BigInteger, nullable=False, default=0, server_default="0")
 
-    # E2E handshake (только для type=secret):
+    # E2E handshake (DM: секретные и обычные приватные после стадии 2):
     # {creator_id, eph_pub, creator_identity_pub, peer_identity_pub}
     e2e_handshake = Column(JSONB, nullable=True)
+
+    # Чат шифруется end-to-end. Единый признак «сервер контента не видит» для
+    # всех механизмов: DM (handshake) и группы (sender keys, стадия 3b).
+    # Заменяет разбросанные проверки type/handshake в create_message.
+    is_e2e = Column(Boolean, nullable=False, default=False, server_default="false")
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

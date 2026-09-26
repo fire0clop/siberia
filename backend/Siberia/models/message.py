@@ -55,9 +55,13 @@ class Message(Base):
     # offset/length — в UTF-16 code units (общий знаменатель Swift/Python)
     text_entities = Column(JSONB, nullable=True)
 
-    # E2E (секретные чаты): base64(nonce || AES-GCM ciphertext+tag).
-    # Для secret-чатов text всегда NULL — сервер контента не видит.
+    # E2E: base64-блоб (DM: nonce||ct+tag под ключом чата; группы: {epoch,ct}
+    # под sender-key отправителя). В E2E-чатах text всегда NULL.
     encrypted_payload = Column(Text, nullable=True)
+
+    # Устройство-отправитель (группы, sender keys): по нему получатель выбирает
+    # нужный sender-key. NULL для DM (там ключ чата общий) и plaintext.
+    sender_device_id = Column(String(128), nullable=True)
 
     # OG-превью первой ссылки: {url,title,description,image_url,site_name}|null.
     # Заполняется асинхронно ARQ-задачей fetch_link_preview.

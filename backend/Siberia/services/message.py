@@ -185,6 +185,7 @@ async def create_message(
     forward_message_id: int | None = None,
     entities=None,
     encrypted_payload: str | None = None,
+    sender_device_id: str | None = None,
 ) -> tuple[Message, bool]:
     await check_user_in_chat(db, user_id, chat_id)
 
@@ -203,9 +204,10 @@ async def create_message(
     from models.chat import ChatType as _ChatType
     from services.block_service import check_not_blocked
     _chat_row = await db.get(Chat, chat_id)
-    # E2E определяется наличием handshake, а не типом: и секретные чаты, и
-    # обычные DM после стадии 2 несут handshake и идут одним шифро-путём.
-    _is_e2e = _chat_row is not None and _chat_row.e2e_handshake is not None
+    # E2E определяется единым флагом chats.is_e2e (DM с handshake ИЛИ группа с
+    # sender keys), а не типом/наличием handshake — так группы тоже попадают
+    # в шифро-путь, а сервер контента не видит.
+    _is_e2e = _chat_row is not None and _chat_row.is_e2e
     if _chat_row is not None and _chat_row.type in (_ChatType.private, _ChatType.secret):
         _other = await db.execute(
             select(_ChatMember.user_id).where(
@@ -285,6 +287,7 @@ async def create_message(
         mention_user_ids=mention_user_ids,
         text_entities=validated_entities,
         encrypted_payload=encrypted_payload,
+        sender_device_id=sender_device_id if _is_e2e else None,
     )
     db.add(message)
     try:
@@ -325,6 +328,7 @@ async def create_message(
         "text": text,
         "entities": validated_entities,
         "encrypted_payload": encrypted_payload,
+        "sender_device_id": message.sender_device_id,
         "media_id": str(media_id) if media_id else None,
         "media_type": _media_type,
         "client_message_id": str(client_message_id) if client_message_id else None,

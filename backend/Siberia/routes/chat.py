@@ -193,6 +193,7 @@ async def send_chat_message(
         forward_message_id=data.forward_message_id,
         entities=data.entities,
         encrypted_payload=data.encrypted_payload,
+        sender_device_id=data.sender_device_id,
     )
     media_type = None
     if msg.media_id:
@@ -217,6 +218,7 @@ async def send_chat_message(
             "entities": msg.text_entities,
             "link_preview": msg.link_preview,
             "encrypted_payload": msg.encrypted_payload,
+            "sender_device_id": msg.sender_device_id,
             "reactions": None,
             "send_at": msg.send_at,
             "created_at": msg.created_at,
@@ -258,6 +260,111 @@ async def list_chat_messages(
         before_id=before_id,
         after_id=after_id,
     )
+
+
+# ── Групповое E2E: sender keys (стадия 3b) ──────────────────────────────────
+
+class SenderKeyDistItem(BaseModel):
+    to_user_id: int
+    to_device_id: str = Field(..., min_length=1, max_length=128)
+    ciphertext: str = Field(..., min_length=24, max_length=20000)
+
+
+class SenderKeyUpload(BaseModel):
+    from_device_id: str = Field(..., min_length=1, max_length=128)
+    key_epoch: int = Field(0, ge=0)
+    distributions: list[SenderKeyDistItem] = Field(..., min_length=1, max_length=4000)
+
+
+@router.get("/{chat_id}/member-devices")
+async def chat_member_devices(
+    chat_id: int,
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Все устройства всех участников чата — кому раздавать sender-key."""
+    from models.chat_member import ChatMember as _CM
+    from models.e2e_device import E2EDevice
+    await check_user_in_chat(db, current["user"].id, chat_id)
+
+    member_ids = (await db.execute(
+        select(_CM.user_id).where(_CM.chat_id == chat_id)
+    )).scalars().all()
+    if not member_ids:
+        return {"devices": []}
+
+    rows = (await db.execute(
+        select(E2EDevice).where(E2EDevice.user_id.in_(member_ids)).order_by(E2EDevice.id)
+    )).scalars().all()
+    return {"devices": [
+        {"user_id": d.user_id, "device_id": d.device_id, "public_key": d.public_key}
+        for d in rows
+    ]}
+
+
+@router.post("/{chat_id}/sender-keys", status_code=200)
+async def upload_sender_keys(
+    chat_id: int,
+    data: SenderKeyUpload,
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Раздача sender-key устройствам-получателям (SKDM). Сервер — транспорт:
+    ciphertext'ы непрозрачны. Идемпотентно по (чат, from_device, to_device, эпоха)."""
+    from sqlalchemy.dialects.postgresql import insert as _pg_insert
+    from models.e2e_sender_key import E2ESenderKey
+    uid = current["user"].id
+    await check_user_in_chat(db, uid, chat_id)
+
+    now = datetime.now(timezone.utc)
+    for item in data.distributions:
+        stmt = _pg_insert(E2ESenderKey.__table__).values(
+            chat_id=chat_id,
+            from_user_id=uid,
+            from_device_id=data.from_device_id,
+            to_user_id=item.to_user_id,
+            to_device_id=item.to_device_id,
+            key_epoch=data.key_epoch,
+            ciphertext=item.ciphertext,
+            created_at=now,
+        ).on_conflict_do_update(
+            constraint="uq_e2e_sender_key_dist",
+            set_={"ciphertext": item.ciphertext, "created_at": now},
+        )
+        await db.execute(stmt)
+    await db.commit()
+    return {"stored": len(data.distributions)}
+
+
+@router.get("/{chat_id}/sender-keys")
+async def fetch_sender_keys(
+    chat_id: int,
+    device_id: str = Query(..., min_length=1, max_length=128),
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """SKDM, адресованные ЭТОМУ устройству вызывающего — чтобы вывести
+    sender-key каждого отправителя чата."""
+    from models.e2e_sender_key import E2ESenderKey
+    uid = current["user"].id
+    await check_user_in_chat(db, uid, chat_id)
+
+    rows = (await db.execute(
+        select(E2ESenderKey).where(
+            E2ESenderKey.chat_id == chat_id,
+            E2ESenderKey.to_user_id == uid,
+            E2ESenderKey.to_device_id == device_id,
+        ).order_by(E2ESenderKey.id)
+    )).scalars().all()
+    return {"keys": [
+        {
+            "from_user_id": r.from_user_id,
+            "from_device_id": r.from_device_id,
+            "key_epoch": r.key_epoch,
+            "ciphertext": r.ciphertext,
+        }
+        for r in rows
+    ]}
 
 
 @router.post("/{chat_id}/archive", status_code=200)

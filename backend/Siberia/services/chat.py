@@ -142,6 +142,7 @@ async def create_chat(
                     hs = await _build_handshake(db, creator_id, other_id, eph_pub)
                     if hs is not None:
                         existing.e2e_handshake = hs
+                        existing.is_e2e = True
                         await db.commit()
                         await db.refresh(existing)
             return existing
@@ -162,7 +163,7 @@ async def create_chat(
         handshake = None
         if eph_pub is not None:
             handshake = await _build_handshake(db, creator_id, other_id, eph_pub)
-        chat = Chat(title=title, e2e_handshake=handshake)
+        chat = Chat(title=title, e2e_handshake=handshake, is_e2e=handshake is not None)
         db.add(chat)
         await db.flush()
 
@@ -221,6 +222,7 @@ async def create_secret_chat(
 
     chat = Chat(
         type=ChatType.secret,
+        is_e2e=True,
         e2e_handshake={
             "v": 1,
             "creator_id": creator_id,

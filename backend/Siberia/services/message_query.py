@@ -114,6 +114,7 @@ async def get_messages_with_status(
                 "entities": msg.text_entities if not deleted else None,
                 "link_preview": msg.link_preview if not deleted else None,
                 "encrypted_payload": msg.encrypted_payload if not deleted else None,
+                "sender_device_id": msg.sender_device_id if not deleted else None,
                 "send_at": msg.send_at,
                 "reactions": reactions_map.get(msg.id) or None,
                 "client_message_id": str(msg.client_message_id)
@@ -207,6 +208,7 @@ async def get_messages_around(
             "entities": msg.text_entities if not deleted else None,
             "link_preview": msg.link_preview if not deleted else None,
             "encrypted_payload": msg.encrypted_payload if not deleted else None,
+            "sender_device_id": msg.sender_device_id if not deleted else None,
             "send_at": msg.send_at,
             "reactions": reactions_map.get(msg.id) or None,
             "client_message_id": str(msg.client_message_id) if msg.client_message_id else None,
