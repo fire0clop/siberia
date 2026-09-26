@@ -129,21 +129,41 @@ def event_loop_policy():
 
 @pytest.fixture(autouse=True)
 async def _clean_state(_redis_server, _test_database):
-    """Перед каждым тестом: пустые таблицы и пустой Redis."""
+    """Перед каждым тестом: пустые таблицы и пустой Redis.
+
+    TRUNCATE берёт AccessExclusiveLock. Fire-and-forget задачи предыдущего теста
+    (push/link-preview через asyncio.create_task) могут ещё держать соединение с
+    read-локом → дедлок. Поэтому ограничиваем ожидание lock_timeout и повторяем
+    несколько раз, пока фоновые соединения не освободятся.
+    """
+    import asyncio
+
+    from sqlalchemy.exc import DBAPIError
+
     from db import async_session_maker
     from sqlalchemy import text
     from utils.redis import redis_client
 
-    async with async_session_maker() as db:
-        result = await db.execute(text(
-            "SELECT tablename FROM pg_tables "
-            "WHERE schemaname='public' AND tablename != 'alembic_version'"
-        ))
-        tables = [row[0] for row in result.all()]
-        if tables:
-            joined = ", ".join(f'"{t}"' for t in tables)
-            await db.execute(text(f"TRUNCATE {joined} RESTART IDENTITY CASCADE"))
-            await db.commit()
+    last_err = None
+    for attempt in range(8):
+        try:
+            async with async_session_maker() as db:
+                result = await db.execute(text(
+                    "SELECT tablename FROM pg_tables "
+                    "WHERE schemaname='public' AND tablename != 'alembic_version'"
+                ))
+                tables = [row[0] for row in result.all()]
+                if tables:
+                    joined = ", ".join(f'"{t}"' for t in tables)
+                    await db.execute(text("SET LOCAL lock_timeout = '3s'"))
+                    await db.execute(text(f"TRUNCATE {joined} RESTART IDENTITY CASCADE"))
+                    await db.commit()
+            break
+        except DBAPIError as e:  # deadlock / lock timeout — фоновая задача ещё жива
+            last_err = e
+            await asyncio.sleep(0.25 * (attempt + 1))
+    else:
+        raise last_err
     await redis_client.flushdb()
     yield
 
