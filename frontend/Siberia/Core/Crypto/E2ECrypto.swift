@@ -344,6 +344,50 @@ final class E2ECrypto {
 	/// device_id этого устройства (стабильный per-install).
 	var myDeviceId: String { DeviceIDStorage.shared.deviceId }
 
+	// MARK: – Бэкап/восстановление identity-ключа (стадия 4b)
+
+	/// Кладёт на сервер зашифрованный под пассфразу бэкап identity-ключа.
+	@discardableResult
+	func backupIdentityKey(passphrase: String) async -> Bool {
+		let secret = identityKey().rawRepresentation
+		guard let wrapped = KeyBackupCrypto.wrap(secret: secret, passphrase: passphrase) else { return false }
+		do {
+			let body = try JSONSerialization.data(withJSONObject: [
+				"ciphertext": wrapped.ciphertext,
+				"salt": wrapped.salt,
+				"iterations": wrapped.iterations,
+			])
+			_ = try await APIClient.shared.request(path: "/e2e/backup", method: "PUT", body: body)
+			return true
+		} catch {
+			Log.auth.warning("E2E backup upload failed: \(String(describing: error))")
+			return false
+		}
+	}
+
+	/// Восстанавливает identity-ключ из бэкапа по пассфразе. Перезаписывает
+	/// ключ устройства в Keychain и публикует его как ключ этого устройства.
+	/// false — бэкапа нет или пассфраза неверна.
+	func restoreIdentityKey(passphrase: String) async -> Bool {
+		struct BackupOut: Codable { let ciphertext: String; let salt: String; let iterations: Int }
+		let out: BackupOut
+		do {
+			let data = try await APIClient.shared.request(path: "/e2e/backup", method: "GET")
+			out = try APIClient.shared.decode(BackupOut.self, from: data)
+		} catch {
+			return false
+		}
+		guard let secret = KeyBackupCrypto.unwrap(
+			ciphertextB64: out.ciphertext, saltB64: out.salt,
+			iterations: out.iterations, passphrase: passphrase
+		), (try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: secret)) != nil else {
+			return false  // неверная пассфраза или мусор
+		}
+		writeData(secret, identityAccount)
+		await publishKeyIfNeeded()  // зарегистрировать восстановленный ключ как ключ этого устройства
+		return true
+	}
+
 	// MARK: – Групповые sender keys (стадия 3b)
 
 	// Свой sender-key по эпохам (нужно хранить старые, чтобы читать свою же

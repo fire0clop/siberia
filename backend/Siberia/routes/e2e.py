@@ -11,6 +11,7 @@ from db import get_db
 from utils.deps import get_current_user
 from models.e2e_key import E2EKey
 from models.e2e_device import E2EDevice
+from models.e2e_key_backup import E2EKeyBackup
 
 router = APIRouter(prefix="/e2e", tags=["E2E"])
 
@@ -39,6 +40,18 @@ class E2EDeviceOut(BaseModel):
 class E2EDeviceListOut(BaseModel):
     user_id: int
     devices: list[E2EDeviceOut]
+
+
+class E2EBackupPut(BaseModel):
+    ciphertext: str = Field(..., min_length=24, max_length=8192)
+    salt: str = Field(..., min_length=8, max_length=128)
+    iterations: int = Field(..., ge=100_000, le=5_000_000)
+
+
+class E2EBackupOut(BaseModel):
+    ciphertext: str
+    salt: str
+    iterations: int
 
 
 def _validate_x25519_pub(b64: str) -> None:
@@ -133,3 +146,38 @@ async def get_devices(
         for d in result.scalars().all()
     ]
     return E2EDeviceListOut(user_id=user_id, devices=devices)
+
+
+@router.put("/backup", response_model=E2EBackupOut)
+async def put_backup(
+    data: E2EBackupPut,
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Кладёт/заменяет зашифрованный бэкап identity-ключа (под пассфразу).
+    Сервер хранит только непрозрачный ciphertext + соль + итерации."""
+    uid = current["user"].id
+    row = await db.get(E2EKeyBackup, uid)
+    if row is None:
+        row = E2EKeyBackup(user_id=uid, ciphertext=data.ciphertext,
+                           salt=data.salt, iterations=data.iterations)
+        db.add(row)
+    else:
+        row.ciphertext = data.ciphertext
+        row.salt = data.salt
+        row.iterations = data.iterations
+        row.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return E2EBackupOut(ciphertext=data.ciphertext, salt=data.salt, iterations=data.iterations)
+
+
+@router.get("/backup", response_model=E2EBackupOut)
+async def get_backup(
+    current=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отдаёт бэкап ВЫЗЫВАЮЩЕГО (свой identity восстанавливается только себе)."""
+    row = await db.get(E2EKeyBackup, current["user"].id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No key backup")
+    return E2EBackupOut(ciphertext=row.ciphertext, salt=row.salt, iterations=row.iterations)

@@ -96,6 +96,7 @@ struct ProfileView: View {
 	@State private var showEmailVerify = false
 	@State private var show2FASetup    = false
 	@State private var show2FADisable  = false
+	@State private var showKeyBackup   = false
 	@State private var has2FA          = false
 
 	// Sheets
@@ -190,6 +191,7 @@ struct ProfileView: View {
 		}
 		.sheet(isPresented: $show2FASetup)    { TwoFactorSetupView(onCompleted: { has2FA = true }) }
 		.sheet(isPresented: $show2FADisable)  { TwoFactorDisableSheet(onDisabled: { has2FA = false }) }
+		.sheet(isPresented: $showKeyBackup)   { KeyBackupSheet() }
 		.sheet(isPresented: $showPrivacy)     { PrivacySettingsView() }
 		.sheet(isPresented: $showBlocked)     { BlockedListView() }
 		.sheet(isPresented: $showEditProfile) { EditProfileView().environmentObject(appState) }
@@ -464,6 +466,24 @@ struct ProfileView: View {
 				}
 				.font(.system(size: 13, weight: .semibold))
 				.foregroundStyle(has2FA ? Color(red:0.90,green:0.25,blue:0.35) : ac1)
+			}
+			.padding(.horizontal, 16).padding(.vertical, 13)
+
+			glassDivider
+
+			HStack(spacing: 14) {
+				glassIconBadge(icon: "key.horizontal.fill", color: ac2)
+				VStack(alignment: .leading, spacing: 3) {
+					Text("Резервная копия ключей")
+						.font(.system(size: 15, weight: .medium))
+						.foregroundStyle(.white)
+					Text("Для восстановления E2E на новом устройстве")
+						.font(.system(size: 12)).foregroundStyle(.white.opacity(0.38))
+				}
+				Spacer()
+				Button("Настроить") { showKeyBackup = true }
+					.font(.system(size: 13, weight: .semibold))
+					.foregroundStyle(ac2)
 			}
 			.padding(.horizontal, 16).padding(.vertical, 13)
 		}
