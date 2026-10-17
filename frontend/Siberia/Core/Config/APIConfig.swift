@@ -22,7 +22,9 @@ enum APIConfig {
 		#if DEBUG
 		return "http://192.168.50.49:8000"
 		#else
-		return "https://api.siberia.app"
+		// Прод-домен кириллический (api.сибериа.space); в URL/URLSession хост
+		// обязан быть ASCII, поэтому punycode-форма — это тот же домен.
+		return "https://api.xn--80abmkc1cd.space"
 		#endif
 	}()
 

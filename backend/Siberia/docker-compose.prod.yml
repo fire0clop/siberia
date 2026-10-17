@@ -1,0 +1,54 @@
+# Production override for the Siberia backend, co-located with the "activity"
+# project on the same host. Differences from docker-compose.yml:
+#   • project name "siberia" (own network/volumes), no clash with "backend"
+#   • NO public host ports for postgres/redis/minio — internal network only
+#   • API bound to 127.0.0.1:8001 — Caddy terminates TLS and reverse-proxies
+#   • MinIO bound to 127.0.0.1:9000 — Caddy serves media over HTTPS
+#   • conservative mem_limits (host has ~1.9 GB RAM shared with another stack)
+#
+# Deploy:
+#   docker compose -p siberia -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  postgres:
+    ports: !reset []        # не публикуем наружу
+    mem_limit: 384m
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+
+  redis:
+    ports: !reset []
+    mem_limit: 96m
+
+  api:
+    # !override — заменить список портов целиком (иначе compose сливает с
+    # базовым 8000:8000, который занят соседним проектом "activity").
+    ports: !override
+      - "127.0.0.1:8001:8000"   # только localhost → Caddy проксирует
+    mem_limit: 512m
+    environment:
+      ENV: production
+
+  minio:
+    image: quay.io/minio/minio:latest   # Docker Hub minio/* выпилен, образы на quay.io
+    ports: !override
+      - "127.0.0.1:9000:9000"   # media через Caddy; консоль 9001 не публикуем
+    mem_limit: 256m
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env}
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    # Перекрываем дефолтные minioadmin: создаём бакет кредами из .env.
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+        mc mb --ignore-existing local/siberia &&
+        mc anonymous set download local/siberia
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env}
+
+  arq-worker:
+    mem_limit: 256m
